@@ -1,0 +1,7 @@
+{
+  "name": "BI 360° – Inteligência Pública Camaquã",
+  "description": "Dashboard executivo para monitoramento em tempo real de secretarias, indicadores e prioridades governamentais integrado ao ecossistema Google.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

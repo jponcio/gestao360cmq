@@ -1,28 +1,38 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
 import { 
   Target, Zap, AlertCircle, Lightbulb, ShieldAlert, 
   Lock, Unlock, KeyRound, Save, Info, Plus, Trash2, 
-  User, Search, ArrowRight, ArrowDown, GraduationCap, 
-  CheckCircle2, Circle, Clock, Check, TrendingUp,
-  LayoutDashboard, FolderKanban, CheckSquare, Map as MapIcon,
-  ShieldCheck, Activity, Calendar, Briefcase, MessageSquare,
-  Users, Building2, HardHat, Heart, GraduationCap as EduIcon,
-  Landmark, Globe, Shield, Scale, Tractor, Eye, EyeOff,
-  Filter, ChevronRight, BarChart3, BookOpen, Compass, Award,
-  MapPin, Navigation2, X, Send, ArrowUpRight, ListTodo, AlertTriangle,
-  Tag as TagIcon, MoreHorizontal, Settings2, Sparkles, Pencil, RefreshCw,
-  Hash, Map as MapLucide, HelpCircle, Book, ShieldQuestion, ExternalLink,
-  Link, MoveUp, MoveDown, MousePointer2, Rocket, Layers, Flag, Archive, ChevronDown,
-  BarChart, PieChart, Activity as ActivityIcon
+  User, Search, ArrowRight, ArrowDown, CheckCircle2, 
+  Clock, Check, TrendingUp, FolderKanban, Map as MapIcon,
+  ShieldCheck, Activity, Building2, HardHat, Heart, 
+  GraduationCap as EduIcon, Eye, EyeOff, ChevronRight, 
+  BarChart3, Compass, MapPin, X, Rocket, Layers, Archive, 
+  UserCheck, Trophy, Gavel, Users2, Pencil, ListTodo,
+  Sparkles, ChevronDown, ChevronUp, CheckSquare, Calendar,
+  MoreHorizontal, Filter, List, BookOpen, HelpCircle,
+  FileDown, History, Copy, ClipboardCheck, LayoutList,
+  Wand2, Settings2, Tag, AlertTriangle, Briefcase, FileText,
+  Navigation
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { DashboardData, Secretaria, KanbanCard, KanbanStatus, EscutaCidada, DependenciaTipo, TipoProjeto } from './types';
+import { DashboardData, Secretaria, KanbanCard, KanbanStatus, EscutaCidada, TipoProjeto } from './types';
 import { MOCK_DATA, NAVIGATION } from './constants';
 import { getGovernmentInsights } from './services/geminiService';
 
-// --- CONFIGURAÇÃO GLOBAL LEAFLET ---
+// --- CONFIGURAÇÃO GLOBAL ---
+const EXECUTIVO = {
+  prefeito: "Abner Dillmann",
+  vice: "Luciano P Dias"
+};
+
+const VERSION = "v2.6.0";
+
+// LOCK_MODULE("TerritorioVivo", { immutable: true });
+const HARD_LOCK = {
+  territorioVivo: true
+};
+
 const DefaultIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
@@ -32,541 +42,478 @@ const DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// --- HELPERS ANALYTICS ---
-const calculateDaysOld = (dateStr: string) => {
-  try {
-    const date = new Date(dateStr);
-    return Math.floor(Math.abs(new Date().getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  } catch { return 0; }
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
+// --- HELPERS VISUAIS ---
+const StatusBadge = ({ status, small = false }: { status: string, small?: boolean }) => {
   const styles: Record<string, string> = {
     ok: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30',
     atencao: 'bg-amber-500/20 text-amber-500 border-amber-500/30',
     critico: 'bg-rose-500/20 text-rose-500 border-rose-500/30',
-    concluido: 'bg-emerald-500 text-white border-emerald-400',
     'Concluído': 'bg-emerald-500 text-white border-emerald-400',
     'Em Andamento': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    'Backlog': 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-    'Depende de': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    'Backlog': 'bg-slate-700/50 text-slate-300 border-slate-600/30',
+    'Em Atenção': 'bg-amber-600/20 text-amber-500 border-amber-600/30',
+    'Parado': 'bg-rose-600/20 text-rose-500 border-rose-600/30',
+    'Depende de': 'bg-amber-600/20 text-amber-500 border-amber-600/30',
+    'Planejado': 'bg-slate-700/50 text-slate-300 border-slate-600',
+    'Em risco': 'bg-rose-500/20 text-rose-500 border-rose-500/30',
+    'Estratégico': 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+    'Transversal': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    'Setorial': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    'Em Execução': 'bg-blue-600 text-white border-blue-500',
+    'Em Articulação': 'bg-purple-600 text-white border-purple-500',
+    'Suspenso': 'bg-slate-900 text-slate-400 border-slate-700',
+    'Em Risco ⚠️': 'bg-rose-600 text-white border-rose-500 animate-pulse',
+    'Aberta': 'bg-rose-500/20 text-rose-500 border-rose-500/30',
+    'Resolvida': 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30',
   };
-  return <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md border whitespace-nowrap ${styles[status] || 'bg-slate-800 text-slate-400'}`}>{status}</span>;
+  
+  const baseClasses = `font-black uppercase rounded-md border whitespace-nowrap italic tracking-tighter`;
+  const sizeClasses = small ? 'text-[7px] px-1.5 py-0.2' : 'text-[8px] px-2 py-0.5';
+  
+  return <span className={`${baseClasses} ${sizeClasses} ${styles[status] || 'bg-slate-800 text-slate-400 border-slate-700'}`}>{status}</span>;
 };
 
-// [SECTION: KANBAN MODULE]
-const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => {
-  const [modalMode, setModalMode] = useState<'none' | 'add' | 'edit'>('none');
-  const [editingCard, setEditingCard] = useState<KanbanCard | null>(null);
-  const [watchedStatus, setWatchedStatus] = useState<KanbanStatus>('Backlog');
-  const columns: KanbanStatus[] = ['Backlog', 'Em Andamento', 'Depende de', 'Concluído'];
-
-  const handleSaveCard = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const cardData: KanbanCard = {
-      id: editingCard ? editingCard.id : `C${Date.now()}`,
-      titulo: fd.get('titulo') as string,
-      dono: fd.get('dono') as string,
-      status: watchedStatus,
-      criadoEm: editingCard?.criadoEm || new Date().toISOString(),
-      atualizadoEm: new Date().toISOString(),
-      secretariaId: secretaria.id,
-      tipo: (fd.get('tipo') as TipoProjeto) || 'Operacional',
-      tags: editingCard?.tags || ['Rotina'],
-      justificativa: fd.get('justificativa') as string || '',
-    };
-    if (modalMode === 'add') onUpdateCards([cardData, ...cards]);
-    else onUpdateCards(cards.map((c: any) => c.id === cardData.id ? cardData : c));
-    setModalMode('none'); setEditingCard(null);
-  };
-
-  return (
-    <div className="space-y-8 animate-in slide-in-from-right duration-500 pb-32">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#1f2937] p-8 rounded-[40px] border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-6">
-           <button onClick={onBack} className="p-4 bg-white/5 rounded-2xl hover:bg-indigo-600 text-slate-400 transition-all"><ArrowRight className="rotate-180" size={24}/></button>
-           <div><h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">{secretaria.nome}</h3><p className="text-xs text-indigo-400 font-black uppercase">{secretaria.secretario}</p></div>
-        </div>
-        <button onClick={() => setModalMode('add')} className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg"><Plus size={18}/> Novo Card</button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {columns.map(col => {
-          const colCards = (cards || []).filter((c: any) => c.status === col);
-          return (
-            <div key={col} className="bg-[#111827]/50 rounded-[48px] p-6 border border-white/5 min-h-[600px] flex flex-col">
-              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-8 px-4 flex justify-between">{col} <span className="bg-slate-800 text-indigo-400 px-3 py-1 rounded-full">{colCards.length}</span></h4>
-              <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
-                {colCards.map((card: any) => {
-                   const daysOld = calculateDaysOld(card.atualizadoEm);
-                   const isInert = daysOld >= 3 && card.status !== 'Concluído';
-                   return (
-                    <div key={card.id} onClick={() => { setEditingCard(card); setWatchedStatus(card.status); setModalMode('edit'); }} className={`bg-[#1f2937] border p-6 rounded-[32px] shadow-xl cursor-pointer hover:border-indigo-500/50 transition-all relative group ${isInert ? 'border-rose-500/30' : 'border-white/5'}`}>
-                      <div className="flex justify-between items-start mb-4">
-                        <StatusBadge status={card.status} />
-                        {isInert && <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg animate-pulse" title="Card inerte há +3 dias"><Clock size={12}/></div>}
-                      </div>
-                      <h5 className="text-white font-black text-sm mb-4 italic leading-tight">{card.titulo}</h5>
-                      {card.justificativa && <div className="flex items-center gap-2 text-[9px] text-amber-500 font-bold uppercase mb-4 bg-amber-500/5 p-2 rounded-xl"><AlertTriangle size={10}/> Justificativa Pendente</div>}
-                      <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{card.dono}</span>
-                        <span className="text-[8px] font-black text-slate-600">{daysOld}d</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {modalMode !== 'none' && (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 backdrop-blur-md bg-black/70 animate-in fade-in">
-          <div className="bg-[#1f2937] border border-white/10 w-full max-w-2xl rounded-[48px] p-10 shadow-3xl max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <h4 className="text-2xl font-black text-white italic uppercase mb-10">{modalMode === 'add' ? 'Nova Demanda' : 'Ajustar Card'}</h4>
-            <form onSubmit={handleSaveCard} className="space-y-6">
-              <input name="titulo" required defaultValue={editingCard?.titulo} placeholder="Título do Card" className="w-full bg-black/20 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-indigo-500" />
-              <input name="dono" required defaultValue={editingCard?.dono} placeholder="Responsável" className="w-full bg-black/20 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-indigo-500" />
-              
-              <div className="space-y-3">
-                 <p className="text-[10px] font-black text-slate-500 uppercase italic">Status da Entrega</p>
-                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {columns.map(st => (
-                      <label key={st} className={`cursor-pointer flex items-center justify-center p-4 rounded-2xl border transition-all ${watchedStatus === st ? 'bg-indigo-600 text-white' : 'bg-black/20 text-slate-500'}`}>
-                         <input type="radio" name="status" value={st} checked={watchedStatus === st} onChange={() => setWatchedStatus(st)} className="hidden" />
-                         <span className="text-[9px] font-black uppercase">{st}</span>
-                      </label>
-                    ))}
-                 </div>
-              </div>
-
-              {watchedStatus === 'Depende de' && (
-                <div className="space-y-2 animate-in slide-in-from-top-2">
-                   <p className="text-[10px] font-black text-amber-500 uppercase italic">Justificativa de Impedimento</p>
-                   <textarea name="justificativa" defaultValue={editingCard?.justificativa} required placeholder="Descreva o motivo do bloqueio ou dependência..." className="w-full h-32 bg-black/20 border border-amber-500/20 rounded-2xl p-6 text-white text-sm resize-none outline-none focus:border-amber-500" />
-                </div>
-              )}
-
-              <div className="flex gap-4 pt-6">
-                 <button type="button" onClick={() => setModalMode('none')} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-[28px] text-[10px] font-black uppercase">Cancelar</button>
-                 <button type="submit" className="flex-[2] py-5 bg-indigo-600 text-white rounded-[28px] text-[10px] font-black uppercase shadow-xl italic tracking-widest">Salvar no BI</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+const EducationalBanner = ({ title, description, icon: Icon, color = "indigo" }: any) => (
+  <div className={`bg-${color}-600 rounded-[48px] p-12 text-white flex flex-col md:flex-row items-center gap-10 shadow-3xl mb-16 relative overflow-hidden group`}>
+    <div className="absolute right-0 top-0 p-12 opacity-10 group-hover:scale-110 transition-transform duration-700"><Icon size={180}/></div>
+    <div className="p-8 bg-white/20 rounded-[32px] shrink-0 backdrop-blur-md border border-white/10 shadow-inner"><Icon size={56}/></div>
+    <div className="space-y-4 relative z-10">
+      <h3 className="text-4xl lg:text-5xl font-black italic uppercase tracking-tighter leading-none">{title}</h3>
+      <p className="text-white/90 font-medium italic max-w-4xl text-lg leading-relaxed">{description}</p>
     </div>
-  );
-};
+  </div>
+);
 
-// [SECTION: STRATEGY MODULE (OKR/SWOT)]
-const EstrategiaModule = ({ swotItems, setSwotItems, okrs, setOkrs, archivedOkrs, setArchivedOkrs }: any) => {
-  const [activeQuadrant, setActiveQuadrant] = useState<string | null>(null);
-  const [newItem, setNewItem] = useState('');
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [editingOkr, setEditingOkr] = useState<any>(null);
+// [MODULE: KANBAN DA SECRETARIA - v2.6.0 DENSITY & CREATION]
+const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newCard, setNewCard] = useState({
+    titulo: '',
+    dono: '',
+    status: 'Em Andamento' as KanbanStatus,
+    tipo: 'Operacional' as TipoProjeto,
+    justificativa: '',
+    tags: [] as string[]
+  });
 
-  const handleAddSwot = (quadrant: string | null) => {
-    if (!quadrant || !newItem.trim()) return;
-    const item = { id: `${quadrant}-${Date.now()}`, text: newItem, resp: 'BI Gestão' };
-    setSwotItems((prev: any) => ({ ...prev, [quadrant]: [...(prev[quadrant] || []), item] }));
-    setNewItem(''); setActiveQuadrant(null);
+  const COLUMNS: KanbanStatus[] = ['Backlog', 'Em Andamento', 'Depende de', 'Em Atenção', 'Parado', 'Concluído'];
+  const TAGS_OPTIONS = ['Urgente', 'Orçamento', 'Jurídico', 'Intersecretarial', 'Obra'];
+
+  const handleAddCard = () => {
+    if (!newCard.titulo.trim()) return;
+    if ((newCard.status === 'Parado' || newCard.status === 'Depende de') && !newCard.justificativa.trim()) {
+      alert("Justificativa obrigatória para status 'Parado' ou 'Depende de'");
+      return;
+    }
+
+    const card: KanbanCard = {
+      id: `C${Date.now()}`,
+      titulo: newCard.titulo,
+      secretariaId: secretaria.id,
+      dono: newCard.dono || secretaria.secretario,
+      status: newCard.status,
+      criadoEm: new Date().toISOString(),
+      atualizadoEm: new Date().toISOString(),
+      tipo: newCard.tipo,
+      tags: newCard.tags,
+      justificativa: newCard.justificativa
+    };
+
+    onUpdateCards([...cards, card]);
+    setIsAdding(false);
+    setNewCard({ titulo: '', dono: '', status: 'Em Andamento', tipo: 'Operacional', justificativa: '', tags: [] });
   };
 
   return (
-    <div className="space-y-16 animate-in fade-in duration-700 pb-48">
-      {/* Banner Diagnóstico SWOT */}
-      <div className="bg-gradient-to-br from-slate-900 via-[#1f2937] to-slate-900 rounded-[48px] p-12 lg:p-16 border border-white/10 shadow-3xl relative overflow-hidden group">
-         <div className="absolute right-[-50px] top-[-50px] opacity-10 group-hover:rotate-12 transition-transform duration-1000"><Rocket size={400}/></div>
-         <div className="relative z-10 max-w-4xl">
-           <div className="flex items-center gap-3 mb-6"><Sparkles className="text-amber-400" size={24}/><p className="text-[12px] font-black uppercase text-amber-400 tracking-[0.5em] italic">Estratégia Camaquã 360: Matriz SWOT</p></div>
-           <h2 className="text-4xl lg:text-7xl font-black text-white italic uppercase tracking-tighter leading-none mb-8">Diagnóstico de Alta Performance</h2>
-           <p className="text-lg text-slate-400 leading-relaxed italic mb-10 max-w-3xl">A matriz SWOT permite identificar forças e fraquezas do <strong>Ambiente Interno</strong>, enquanto monitoramos as oportunidades e ameaças do <strong>Ambiente Externo</strong>.</p>
-           <div className="grid grid-cols-2 gap-8">
-              <div className="flex items-center gap-3 text-rose-500 font-black uppercase text-xs"><CheckCircle2 size={16}/> Pontos Fortes Internos</div>
-              <div className="flex items-center gap-3 text-amber-500 font-black uppercase text-xs"><AlertTriangle size={16}/> Fraquezas e Gargalos</div>
-           </div>
-         </div>
+    <div className="space-y-12 animate-in slide-in-from-right duration-500 pb-48">
+      <div className="flex items-center gap-8 bg-[#1f2937] p-8 rounded-[40px] border border-white/5 shadow-2xl">
+        <button onClick={onBack} className="p-5 bg-white/5 rounded-2xl text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-xl"><ArrowRight className="rotate-180" size={24}/></button>
+        <div>
+          <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter">{secretaria.nome}</h2>
+          <p className="text-indigo-400 text-[11px] font-black uppercase mt-1 italic tracking-[0.2em]">Secretário(a): {secretaria.secretario}</p>
+        </div>
+        <button onClick={() => setIsAdding(true)} className="ml-auto flex items-center gap-3 px-10 py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-500 transition-all"><Plus size={20}/> Nova Demanda</button>
       </div>
 
-      {/* Grid SWOT */}
-      <section className="space-y-12">
-        <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter px-4">Matriz Operacional BI</h3>
-        <div className="flex flex-col lg:flex-row gap-12 items-start justify-center px-4">
-           <div className="relative w-full lg:w-[680px] h-[680px] grid grid-cols-2 grid-rows-2 gap-4">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-44 h-44 bg-[#0f172a] border-[12px] border-[#1f2937] rounded-full shadow-2xl flex items-center justify-center"><Search size={56} className="text-indigo-400" /></div>
-              {['forcas', 'fraquezas', 'oportunidades', 'ameacas'].map((q) => (
-                <div key={q} className={`${q === 'forcas' ? 'bg-[#ef4444]' : q === 'fraquezas' ? 'bg-[#f59e0b]' : q === 'oportunidades' ? 'bg-[#10b981]' : 'bg-[#3b82f6]'} rounded-[56px] p-10 flex flex-col justify-between shadow-2xl border-2 border-white/20 relative group overflow-hidden`}>
-                  <div className="absolute top-[-40px] left-[-40px] opacity-10 font-black text-[180px] italic text-white">{q[0].toUpperCase()}</div>
-                  <h4 className="text-3xl font-black text-white italic uppercase relative z-10">{q}</h4>
-                  <button onClick={() => setActiveQuadrant(q)} className="bg-white/20 hover:bg-white text-white hover:text-slate-900 w-16 h-16 rounded-3xl flex items-center justify-center transition-all shadow-xl self-end relative z-10"><Plus size={32}/></button>
-                </div>
-              ))}
-           </div>
-           <div className="flex-1 w-full bg-[#111827] border border-white/5 rounded-[56px] p-10 h-[680px] overflow-hidden flex flex-col shadow-2xl">
-              <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-8 flex items-center gap-3"><Layers size={14}/> Timeline de Inteligência</h4>
-              <div className="space-y-8 overflow-y-auto custom-scrollbar flex-1 pb-12">
-                 {Object.entries(swotItems || {}).map(([key, items]: any) => items.length > 0 && (
-                   <div key={key} className="space-y-4">
-                      <div className="flex items-center gap-3 sticky top-0 bg-[#111827] py-2 z-10">
-                        <div className={`w-3 h-3 rounded-full ${key === 'forcas' ? 'bg-rose-500' : key === 'fraquezas' ? 'bg-amber-500' : key === 'oportunidades' ? 'bg-emerald-500' : 'bg-blue-500'}`}></div>
-                        <p className="text-[10px] font-black uppercase text-slate-400 italic">{key}</p>
-                      </div>
-                      <div className="space-y-3 pl-4 border-l border-white/5">
-                        {items.map((item: any) => (
-                          <div key={item.id} className="bg-[#1f2937] border border-white/5 p-6 rounded-[32px] shadow-xl flex items-start justify-between group">
-                             <div className="max-w-[85%]"><p className="text-sm font-black text-white italic leading-tight mb-4">"{item.text || item.texto}"</p><span className="text-[8px] font-black text-indigo-400 uppercase italic">{item.resp || item.responsavel}</span></div>
-                             <button onClick={() => setSwotItems((prev: any) => ({ ...prev, [key]: prev[key].filter((i: any) => i.id !== item.id) }))} className="text-slate-700 hover:text-rose-500 p-2"><Trash2 size={16}/></button>
-                          </div>
-                        ))}
-                      </div>
-                   </div>
-                 ))}
-              </div>
-           </div>
-        </div>
-      </section>
-
-      {/* OKR War Room */}
-      <section className="space-y-12 px-4">
-        <div className="bg-[#facc15] rounded-[60px] p-12 text-slate-900 shadow-3xl flex flex-col lg:flex-row items-center gap-16">
-           <div className="flex-1">
-             <h3 className="text-5xl font-black italic uppercase tracking-tighter">Gestão Estratégica OKR</h3>
-             <p className="text-sm font-bold opacity-60 mt-2 italic uppercase">War Room de Resultados Municipais</p>
-           </div>
-           <button onClick={() => setIsCreatingNew(true)} className="bg-slate-900 text-white px-8 py-5 rounded-[28px] text-[11px] font-black uppercase italic shadow-2xl flex items-center gap-3"><Plus size={20}/> Novo Objetivo</button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-           {(okrs || []).map((okr: any) => {
-             const krs = okr.krs || [];
-             const archivedKrs = okr.archivedKrs || [];
-             return (
-             <div key={okr.id} className="bg-[#1f2937] border border-white/5 p-8 rounded-[48px] shadow-2xl flex flex-col h-[520px] group hover:border-amber-400/30 transition-all">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="p-4 rounded-2xl bg-amber-400/10 text-amber-400 border border-white/5"><Flag size={24}/></div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-600 uppercase italic">KRs: {krs.length}</span>
-                    <button onClick={() => setOkrs((p: any) => p.filter((o: any) => o.id !== okr.id))} className="text-slate-700 hover:text-rose-500 p-2"><Archive size={16}/></button>
+      <div className="flex gap-6 overflow-x-auto pb-12 custom-scrollbar min-h-[700px]">
+        {COLUMNS.map(col => (
+          <div key={col} className="flex-1 min-w-[280px] bg-black/20 rounded-[40px] border border-white/5 p-6 flex flex-col gap-6">
+            <div className="flex justify-between items-center px-2">
+               <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">{col}</h3>
+               <span className="bg-white/5 text-[9px] font-black text-slate-500 px-2 py-0.5 rounded-full">{cards.filter((c:any) => c.status === col).length}</span>
+            </div>
+            <div className="flex-1 space-y-4">
+              {cards.filter((c: any) => c.status === col).map((card: any) => (
+                <div key={card.id} className="bg-[#1f2937] border border-white/5 p-6 rounded-[24px] shadow-xl hover:border-indigo-500/30 transition-all group relative">
+                  <div className="flex flex-wrap gap-1 mb-3">
+                     {card.tags?.map((t: string) => <span key={t} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded">{t}</span>)}
+                  </div>
+                  <h4 className="text-[13px] font-bold text-white italic mb-4 leading-tight tracking-tight">{card.titulo}</h4>
+                  {card.justificativa && (
+                    <div className="mb-4 p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                       <p className="text-[8px] font-bold text-amber-500 uppercase italic mb-1">Justificativa:</p>
+                       <p className="text-[9px] text-slate-400 italic line-clamp-2 leading-relaxed">"{card.justificativa}"</p>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-4 border-t border-white/5">
+                    <span className="text-[8px] font-black text-slate-600 uppercase italic">{card.dono}</span>
+                    <div className="flex gap-2">
+                       <button onClick={() => onUpdateCards(cards.filter((c:any) => c.id !== card.id))} className="text-slate-800 hover:text-rose-500 opacity-0 group-hover:opacity-100"><Trash2 size={12}/></button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex-1">
-                   <h4 className="text-lg font-black text-white italic uppercase mb-6 line-clamp-3 leading-tight">{okr.objetivo}</h4>
-                   <div className="space-y-6">
-                      {krs.slice(0, 3).map((kr: any) => (
-                        <div key={kr.id} className="space-y-2">
-                           <div className="flex justify-between text-[10px] font-black text-slate-400">
-                             <span className="truncate max-w-[80%]">"{kr.text}"</span>
-                             <span>{kr.status}%</span>
-                           </div>
-                           <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                             <div className="h-full bg-amber-400 transition-all" style={{ width: `${kr.status}%` }}></div>
-                           </div>
-                        </div>
-                      ))}
-                      {archivedKrs.length > 0 && (
-                        <div className="pt-4 flex items-center gap-2 text-[9px] font-black text-slate-600 uppercase italic">
-                          <Archive size={12}/> {archivedKrs.length} KRs Arquivadas
-                        </div>
-                      )}
-                   </div>
-                </div>
-                <button onClick={() => setEditingOkr(okr)} className="mt-8 w-full py-4 bg-white/5 border border-white/5 rounded-[28px] text-[9px] font-black text-slate-500 uppercase italic group-hover:text-white group-hover:bg-amber-400/10 transition-all">Painel de Missão</button>
-             </div>
-           )})}
-        </div>
-      </section>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* OKR Edit Modal with KR Archive Logic */}
-      {editingOkr && (
-        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-6 backdrop-blur-md bg-black/70 animate-in fade-in">
-           <div className="bg-[#1f2937] border border-white/10 w-full max-w-4xl rounded-[60px] p-10 lg:p-14 shadow-3xl overflow-y-auto max-h-[90vh] custom-scrollbar">
-              <div className="flex justify-between items-center mb-12">
-                 <h5 className="text-3xl font-black text-white italic uppercase tracking-tighter">Gestão de Key Results</h5>
-                 <button onClick={() => setEditingOkr(null)} className="text-slate-500 hover:text-white"><X size={32}/></button>
-              </div>
-              <div className="space-y-12">
-                 <div className="space-y-4">
-                   <p className="text-[10px] font-black text-slate-500 uppercase italic">Objetivo Mestre</p>
-                   <input value={editingOkr.objetivo} onChange={(e) => setEditingOkr({...editingOkr, objetivo: e.target.value})} className="w-full bg-black/20 border border-white/10 rounded-[28px] px-8 py-5 text-white font-bold italic outline-none focus:border-amber-400" />
+      {isAdding && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[64px] p-12 shadow-3xl">
+              <h4 className="text-3xl font-black text-white italic uppercase mb-10 text-center tracking-tighter">Novo Card de Demanda</h4>
+              <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Nome da Demanda</label>
+                    <input value={newCard.titulo} onChange={e => setNewCard({...newCard, titulo: e.target.value})} placeholder="O que precisa ser feito?" className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-4 text-white outline-none focus:border-indigo-500 font-bold italic" />
                  </div>
-
-                 <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                       <p className="text-[10px] font-black text-amber-400 uppercase italic">Key Results Ativos</p>
-                       <button onClick={() => {
-                         const nKR = { id: `KR-${Date.now()}`, text: 'Novo Resultado Chave', status: 0 };
-                         setEditingOkr({...editingOkr, krs: [...(editingOkr.krs || []), nKR]});
-                       }} className="text-[9px] font-black text-indigo-400 uppercase flex items-center gap-2 border border-indigo-400/20 px-4 py-2 rounded-xl hover:bg-indigo-400 hover:text-white transition-all"><Plus size={14}/> Add KR</button>
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Responsável</label>
+                       <input value={newCard.dono} onChange={e => setNewCard({...newCard, dono: e.target.value})} placeholder="Nome do técnico/gestor..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-6 py-4 text-white font-bold italic" />
                     </div>
-                    <div className="space-y-4">
-                       {(editingOkr.krs || []).map((kr: any) => (
-                         <div key={kr.id} className="bg-black/20 p-6 rounded-[32px] border border-white/5 flex items-center gap-6">
-                            <input value={kr.text} onChange={(e) => {
-                               const nKrs = editingOkr.krs.map((k: any) => k.id === kr.id ? {...k, text: e.target.value} : k);
-                               setEditingOkr({...editingOkr, krs: nKrs});
-                            }} className="bg-transparent text-sm font-bold text-white outline-none flex-1 italic" />
-                            <div className="w-48 flex items-center gap-4">
-                               <input type="range" value={kr.status} onChange={(e) => {
-                                  const nKrs = editingOkr.krs.map((k: any) => k.id === kr.id ? {...k, status: parseInt(e.target.value)} : k);
-                                  setEditingOkr({...editingOkr, krs: nKrs});
-                               }} className="flex-1 accent-amber-400" />
-                               <span className="text-xs font-black text-amber-400 w-8">{kr.status}%</span>
-                            </div>
-                            <button onClick={() => {
-                               const nKrs = editingOkr.krs.filter((k: any) => k.id !== kr.id);
-                               const nArch = [...(editingOkr.archivedKrs || []), kr];
-                               setEditingOkr({...editingOkr, krs: nKrs, archivedKrs: nArch});
-                            }} className="text-slate-700 hover:text-rose-500 transition-colors"><Archive size={18}/></button>
-                         </div>
+                    <div className="space-y-2">
+                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Status</label>
+                       <select value={newCard.status} onChange={e => setNewCard({...newCard, status: e.target.value as any})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-6 py-4 text-white font-bold italic appearance-none cursor-pointer">
+                          {COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                    </div>
+                 </div>
+                 {(newCard.status === 'Parado' || newCard.status === 'Depende de') && (
+                   <div className="space-y-2 animate-in slide-in-from-top">
+                      <label className="text-[9px] font-black text-amber-500 uppercase tracking-widest italic ml-4">Justificativa (Obrigatória)</label>
+                      <textarea value={newCard.justificativa} onChange={e => setNewCard({...newCard, justificativa: e.target.value})} placeholder="Por que este card está parado ou dependente?" className="w-full h-24 bg-black/30 border border-amber-500/20 rounded-3xl px-8 py-4 text-white outline-none focus:border-amber-500 font-bold italic resize-none" />
+                   </div>
+                 )}
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Tags Estratégicas</label>
+                    <div className="flex flex-wrap gap-2 px-2">
+                       {TAGS_OPTIONS.map(tag => (
+                         <button key={tag} onClick={() => {
+                           const tags = newCard.tags.includes(tag) ? newCard.tags.filter(t => t !== tag) : [...newCard.tags, tag];
+                           setNewCard({...newCard, tags});
+                         }} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase italic transition-all border ${newCard.tags.includes(tag) ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-black/20 border-white/5 text-slate-500'}`}>{tag}</button>
                        ))}
                     </div>
                  </div>
-
-                 {editingOkr.archivedKrs?.length > 0 && (
-                   <div className="space-y-6 pt-10 border-t border-white/5">
-                      <p className="text-[10px] font-black text-slate-600 uppercase italic">Key Results Arquivados (Histórico)</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         {editingOkr.archivedKrs.map((akr: any) => (
-                           <div key={akr.id} className="bg-black/40 p-4 rounded-2xl flex items-center justify-between border border-white/5">
-                              <span className="text-[10px] font-bold text-slate-500 italic truncate max-w-[70%] line-through">"{akr.text}"</span>
-                              <button onClick={() => {
-                                 const nArch = editingOkr.archivedKrs.filter((k: any) => k.id !== akr.id);
-                                 const nKrs = [...(editingOkr.krs || []), akr];
-                                 setEditingOkr({...editingOkr, archivedKrs: nArch, krs: nKrs});
-                              }} className="text-[8px] font-black text-amber-500 uppercase hover:text-white transition-all">Restaurar</button>
-                           </div>
-                         ))}
-                      </div>
-                   </div>
-                 )}
-
-                 <button onClick={() => { setOkrs((p: any) => p.map((o: any) => o.id === editingOkr.id ? editingOkr : o)); setEditingOkr(null); }} className="w-full py-6 bg-amber-400 text-slate-900 rounded-[32px] text-[11px] font-black uppercase shadow-3xl italic tracking-widest">Consolidar Dados BI</button>
+                 <div className="flex gap-6 pt-6">
+                    <button onClick={() => setIsAdding(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button>
+                    <button onClick={handleAddCard} className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Salvar Demanda</button>
+                 </div>
               </div>
            </div>
-        </div>
-      )}
-
-      {/* SWOT Modals */}
-      {activeQuadrant && (
-        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-6 backdrop-blur-md bg-black/70 animate-in fade-in">
-          <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-12 shadow-3xl">
-             <h5 className="text-2xl font-black text-white italic uppercase mb-10">Cadastrar Insight: {activeQuadrant}</h5>
-             <textarea value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Descrição estratégica..." className="w-full h-40 bg-black/20 border border-white/10 rounded-[32px] p-8 text-sm text-white resize-none outline-none focus:border-indigo-500" />
-             <div className="flex gap-6 mt-10">
-                <button onClick={() => setActiveQuadrant(null)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-[32px] text-[11px] font-black uppercase">Sair</button>
-                <button onClick={() => { handleAddSwot(activeQuadrant); }} className="flex-[2] py-5 bg-indigo-600 text-white rounded-[32px] text-[11px] font-black uppercase italic tracking-widest">Gravar Insight</button>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {isCreatingNew && (
-        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-6 backdrop-blur-md bg-black/70 animate-in fade-in">
-          <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-12 shadow-3xl">
-             <h5 className="text-3xl font-black text-white italic uppercase mb-10">Novo Objetivo</h5>
-             <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const nO = { id: `OKR-${Date.now()}`, objetivo: fd.get('obj') as string, krs: [], archivedKrs: [] }; setOkrs((p: any) => [nO, ...p]); setIsCreatingNew(false); }} className="space-y-8">
-                <input name="obj" required placeholder="Título do Objetivo Mestre" className="w-full bg-black/20 border border-white/10 rounded-[28px] px-8 py-5 text-white italic outline-none focus:border-amber-400" />
-                <button type="submit" className="w-full py-5 bg-amber-400 text-slate-900 rounded-[32px] text-[11px] font-black uppercase italic tracking-widest">Criar Objetivo Estratégico</button>
-             </form>
-          </div>
         </div>
       )}
     </div>
   );
 };
 
-// [SECTION: MACRO DASHBOARD RECOVERY]
+// [MODULE: PAINEL MACRO - v2.6.0 SUMMARY PREVIEW]
 const MacroDashboard = ({ data, selectedSecretaria, setSelectedSecretaria, kanbanRegistry, onUpdateKanban }: any) => {
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [password, setPassword] = useState('');
-  
   if (selectedSecretaria) return <SecretariaKanban secretaria={selectedSecretaria} onBack={() => setSelectedSecretaria(null)} cards={kanbanRegistry[selectedSecretaria.id] || []} onUpdateCards={(nc: any) => onUpdateKanban(selectedSecretaria.id, nc)} />;
-
+  
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-24">
-      {/* Cards de Métricas Superiores */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <div className="bg-[#1f2937] border border-white/5 p-8 rounded-[40px] shadow-xl hover:border-indigo-500/30 transition-all">
-          <div className="flex items-center gap-3 text-emerald-500 mb-2 font-black text-[9px] uppercase"><TrendingUp size={14}/> +4.2% YoY</div>
-          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Arrecadação Municipal</p>
-          <h4 className="text-3xl font-black text-white italic tracking-tighter">R$ 15.542.000</h4>
-        </div>
-        
-        <div className="bg-[#1f2937] border border-white/5 p-8 rounded-[40px] shadow-xl relative overflow-hidden group">
-           <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Saldo em Caixa BI</p>
-           {!isUnlocked ? (
-              <div className="flex items-center gap-2 bg-slate-900/90 border border-white/10 rounded-2xl px-4 py-2 mt-2">
-                <Lock size={16} className="text-indigo-400 animate-pulse"/>
-                <input type="password" value={password} onChange={(e) => {setPassword(e.target.value); if(e.target.value === 'camaqua360') setIsUnlocked(true);}} placeholder="Password" className="bg-transparent text-xs font-black text-white outline-none w-28 tracking-widest" />
-              </div>
-           ) : ( 
-             <div className="animate-in fade-in zoom-in-95">
-               <h4 className="text-3xl font-black text-white italic tracking-tighter mt-2">R$ 2.422.000</h4>
-               <button onClick={() => setIsUnlocked(false)} className="absolute top-4 right-4 text-slate-700 hover:text-white"><EyeOff size={14}/></button>
-             </div>
-           )}
-        </div>
-
-        <div className="bg-[#1f2937] border border-white/5 p-8 rounded-[40px] shadow-xl hover:border-amber-500/30 transition-all">
-          <div className="flex items-center gap-3 text-amber-500 mb-2 font-black text-[9px] uppercase"><ActivityIcon size={14}/> Monitoramento Ativo</div>
-          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Obras Ativas</p>
-          <h4 className="text-3xl font-black text-white italic tracking-tighter">19 Frentes</h4>
-        </div>
-
-        <div className="bg-[#1f2937] border border-white/5 p-8 rounded-[40px] shadow-xl hover:border-indigo-500/30 transition-all">
-          <div className="flex items-center gap-3 text-indigo-400 mb-2 font-black text-[9px] uppercase"><MessageSquare size={14}/> Digital Citizen</div>
-          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Escuta Cidadã</p>
-          <h4 className="text-3xl font-black text-white italic tracking-tighter">128 Chamados</h4>
-        </div>
-      </div>
-
-      {/* Grid de Secretarias */}
-      <div className="bg-[#1f2937] border border-white/5 rounded-[48px] p-10 lg:p-14 shadow-2xl">
-        <div className="flex justify-between items-center mb-16">
-           <h3 className="text-3xl font-black text-white uppercase italic leading-none">Status do Secretariado</h3>
-           <div className="flex gap-4">
-              <span className="flex items-center gap-2 text-[9px] font-black text-emerald-500 uppercase italic"><div className="w-2 h-2 bg-emerald-500 rounded-full"></div> Eficiente</span>
-              <span className="flex items-center gap-2 text-[9px] font-black text-amber-500 uppercase italic"><div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div> Atenção</span>
-           </div>
-        </div>
+      <div className="bg-[#1f2937] border border-white/5 rounded-[64px] p-12 lg:p-16 shadow-3xl">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {(data.secretarias || []).map((sec: any) => (
-             <div key={sec.id} className="bg-[#111827]/60 border border-white/5 p-8 rounded-[48px] hover:border-indigo-500/30 transition-all group flex flex-col justify-between h-[600px] shadow-xl relative overflow-hidden">
-                <div>
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="p-4 rounded-3xl bg-indigo-500/10 text-indigo-400 border border-white/5 shadow-inner">
-                      {sec.nome.includes('Saúde') ? <Heart size={24}/> : sec.nome.includes('Educação') ? <EduIcon size={24}/> : <Building2 size={24}/>}
-                    </div>
-                    <StatusBadge status={sec.status} />
-                  </div>
-                  <h4 className="text-[14px] font-black text-white uppercase italic mb-1 leading-tight">{sec.nome}</h4>
-                  <p className="text-[10px] font-bold text-slate-500 mb-6 uppercase tracking-wider">{sec.secretario}</p>
-                  
-                  <div className="space-y-4 pt-6 border-t border-white/5">
-                     {(sec.metrics || []).map((m: any, idx: number) => (
-                       <div key={idx} className="flex justify-between items-center bg-black/20 p-3 rounded-2xl border border-white/5">
-                          <span className="text-[8px] font-black text-slate-500 uppercase italic">{m.label}</span>
-                          <span className="text-xs font-black text-white italic">{m.value}</span>
-                       </div>
-                     ))}
-                  </div>
-                </div>
-                <button onClick={() => setSelectedSecretaria(sec)} className="w-full py-5 bg-white/5 hover:bg-indigo-600 rounded-[32px] text-[10px] font-black text-slate-300 group-hover:text-white uppercase tracking-[0.3em] transition-all border border-white/5 flex items-center justify-center gap-2">Gerenciar Pasta <ChevronRight size={14}/></button>
-             </div>
-          ))}
-        </div>
-        
-        {/* EXECUTIVE ANALYTICS SECTION RESTORED */}
-        <div className="mt-20 border-t border-white/5 pt-16">
-           <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-10 italic flex items-center gap-3"><PieChart size={16}/> Analytics Consolidado de Gestão</h4>
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-              <div className="bg-[#111827]/80 border border-white/5 p-10 rounded-[48px] shadow-2xl">
-                 <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-8">Performance Geral BI</h5>
-                 <div className="flex items-center gap-10">
-                    <div className="relative w-32 h-32">
-                       <svg className="w-full h-full -rotate-90">
-                          <circle cx="64" cy="64" r="50" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-800" />
-                          <circle cx="64" cy="64" r="50" stroke="currentColor" strokeWidth="12" fill="transparent" strokeDasharray="314" strokeDashoffset="78" className="text-indigo-500" strokeLinecap="round" />
-                       </svg>
-                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-2xl font-black text-white italic leading-none">75%</span>
-                          <span className="text-[7px] font-black text-slate-500 uppercase">Eficiência</span>
-                       </div>
-                    </div>
-                    <div className="flex-1 space-y-4">
-                       <div className="flex justify-between text-[9px] font-black uppercase text-slate-400"><span>Entregas</span><span className="text-emerald-500">82%</span></div>
-                       <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 w-[82%]"></div></div>
-                       <div className="flex justify-between text-[9px] font-black uppercase text-slate-400"><span>Prazos</span><span className="text-amber-500">64%</span></div>
-                       <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 w-[64%]"></div></div>
-                    </div>
-                 </div>
-              </div>
+          {data.secretarias.map((sec: Secretaria) => {
+            const secCards = kanbanRegistry[sec.id] || [];
+            const summary = {
+              andamento: secCards.filter((c:any) => c.status === 'Em Andamento').length,
+              concluido: secCards.filter((c:any) => c.status === 'Concluído').length,
+              parado: secCards.filter((c:any) => c.status === 'Parado' || c.status === 'Em Atenção').length,
+            };
 
-              <div className="bg-[#111827]/80 border border-white/5 p-10 rounded-[48px] shadow-2xl col-span-2">
-                 <div className="flex justify-between items-center mb-10">
-                    <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">Frequência Operacional (7 dias)</h5>
-                    <div className="flex gap-4"><span className="text-[8px] font-black text-slate-600 uppercase">Seg</span><span className="text-[8px] font-black text-slate-600 uppercase">Ter</span><span className="text-[8px] font-black text-slate-600 uppercase">Qua</span><span className="text-[8px] font-black text-white uppercase italic">Hoje</span></div>
-                 </div>
-                 <div className="flex items-end justify-between h-24 gap-4 px-2">
-                    {[35, 60, 45, 80, 55, 90, 75].map((val, i) => (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-3">
-                         <div className={`w-full rounded-t-xl transition-all duration-700 ${i === 6 ? 'bg-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-slate-800 hover:bg-slate-700'}`} style={{ height: `${val}%` }}></div>
-                         <div className="w-1.5 h-1.5 rounded-full bg-slate-800"></div>
-                      </div>
-                    ))}
-                 </div>
+            return (
+              <div key={sec.id} className="bg-[#111827]/70 border border-white/5 p-10 rounded-[56px] hover:border-indigo-500/40 transition-all group flex flex-col justify-between h-[650px] shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 rounded-bl-[120px] -mr-12 -mt-12 group-hover:bg-indigo-600/10 transition-all duration-1000"></div>
+                  <div>
+                    <div className="flex justify-between items-start mb-8">
+                      <div className="p-5 rounded-[24px] bg-indigo-500/10 text-indigo-400 border border-white/5 shadow-xl"><Building2 size={28}/></div>
+                      <StatusBadge status={sec.status} />
+                    </div>
+                    <h4 className="text-[17px] font-black text-white uppercase italic mb-1 group-hover:text-indigo-400 transition-colors leading-tight">{sec.nome}</h4>
+                    
+                    {/* Summary Counters */}
+                    <div className="flex gap-3 mt-6">
+                       <div className="flex-1 bg-blue-500/10 border border-blue-500/20 rounded-2xl p-3 text-center">
+                          <p className="text-[7px] font-black text-blue-400 uppercase italic">Andamento</p>
+                          <p className="text-xl font-black text-white mt-1">{summary.andamento}</p>
+                       </div>
+                       <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 text-center">
+                          <p className="text-[7px] font-black text-emerald-400 uppercase italic">Concluído</p>
+                          <p className="text-xl font-black text-white mt-1">{summary.concluido}</p>
+                       </div>
+                       <div className="flex-1 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-3 text-center">
+                          <p className="text-[7px] font-black text-rose-400 uppercase italic">Atenção</p>
+                          <p className="text-xl font-black text-white mt-1">{summary.parado}</p>
+                       </div>
+                    </div>
+
+                    <div className="space-y-3 pt-8 mt-8 border-t border-white/5">
+                      {secCards.slice(0, 2).map((card: any) => (
+                        <div key={card.id} className="bg-black/40 p-4 rounded-2xl border border-white/5 relative overflow-hidden">
+                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${card.status === 'Concluído' ? 'bg-emerald-500' : 'bg-blue-500'}`}></div>
+                          <span className="text-[10px] font-bold text-white italic line-clamp-2 leading-tight pl-2">{card.titulo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedSecretaria(sec)} className="w-full py-6 bg-white/5 hover:bg-indigo-600 rounded-[32px] text-[11px] font-black text-slate-300 group-hover:text-white uppercase tracking-[0.4em] transition-all border border-white/5 flex items-center justify-center gap-3 mt-10 shadow-2xl italic">Abrir Secretaria <ChevronRight size={18}/></button>
               </div>
-           </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 };
 
-// [SECTION: CITIZEN LISTENING RECOVERY]
-const CitizenListening = ({ escuta, onAdd }: any) => {
-  const [selectedId, setSelectedId] = useState<string | null>(escuta[0]?.id || null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const selectedPoint = useMemo(() => escuta.find((p: any) => p.id === selectedId) || escuta[0], [selectedId, escuta]);
+// [MODULE: OKR - v2.6.0 STRATEGY CREATION]
+const OKRModule = memo(({ okrs, setOkrs }: any) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newOkr, setNewOkr] = useState({ objetivo: '', tipo: 'Estratégico' });
 
-  const MapController = ({ center }: { center: [number, number] }) => {
-    const map = useMap();
-    useEffect(() => { if(center) map.setView(center, 15, { animate: true }); }, [center, map]);
-    return null;
+  const handleAddOkr = () => {
+    if (!newOkr.objetivo.trim()) return;
+    const okr = {
+      id: `OKR-${Date.now()}`,
+      objetivo: newOkr.objetivo,
+      tipo: newOkr.tipo,
+      krs: []
+    };
+    setOkrs([okr, ...okrs]);
+    setIsAdding(false);
+    setNewOkr({ objetivo: '', tipo: 'Estratégico' });
   };
 
   return (
-    <div className="h-[75vh] bg-[#1f2937] rounded-[48px] border border-white/5 overflow-hidden shadow-2xl flex flex-col lg:flex-row relative">
-      <div className="w-full lg:w-96 bg-[#111827] border-r border-white/5 flex flex-col overflow-hidden">
-        <div className="p-8 border-b border-white/5 flex items-center justify-between bg-black/20">
-            <h3 className="text-sm font-black text-white uppercase italic flex items-center gap-2"><MapIcon size={16} className="text-amber-500"/> Território Vivo</h3>
-            <button onClick={() => setIsModalOpen(true)} className="p-3 bg-amber-600 rounded-xl text-white hover:bg-amber-500 transition-all shadow-lg"><Plus size={16}/></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-          {(escuta || []).map((e: any) => (
-            <div key={e.id} onClick={() => setSelectedId(e.id)} className={`p-5 rounded-[28px] border transition-all cursor-pointer relative ${selectedId === e.id ? 'bg-amber-600/15 border-amber-600/50 shadow-xl' : 'bg-white/5 border-white/5 hover:border-amber-500/20'}`}>
-              <h4 className="text-[11px] font-black uppercase text-slate-100 italic leading-tight">{e.tema}</h4>
-              <p className="text-[10px] text-slate-500 font-medium italic mt-2 line-clamp-2 leading-relaxed">"{e.descricao}"</p>
-              <div className="flex justify-between items-center mt-4 pt-2 border-t border-white/5"><span className="text-[8px] font-black text-amber-500/80 uppercase italic">{e.bairro}</span><span className="text-[8px] font-black text-slate-600">{e.data}</span></div>
+    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+      <EducationalBanner title="Monitoramento de OKRs" description="Conectando visão política a resultados mensuráveis. IA atua como suporte consultivo nas micro-entregas." icon={Target} color="amber" />
+      
+      <div className="flex justify-end mb-8">
+         <button onClick={() => setIsAdding(true)} className="flex items-center gap-3 px-10 py-5 bg-amber-600 text-white rounded-3xl font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-amber-500 transition-all italic"><Plus size={20}/> Inserir Nova Estratégia (OKR)</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        {okrs.map((okr: any) => (
+            <div key={okr.id} className="bg-[#1f2937] border border-white/5 p-12 rounded-[64px] shadow-3xl relative hover:border-amber-500/20 transition-all">
+               <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-6">
+                  <StatusBadge status={okr.tipo || 'Setorial'} />
+                  <button onClick={() => setOkrs(okrs.filter((o:any) => o.id !== okr.id))} className="p-3 bg-white/5 text-slate-700 hover:text-rose-500 rounded-xl transition-all"><Trash2 size={16}/></button>
+               </div>
+               <h4 className="text-2xl font-black text-white italic mb-10 leading-tight"><Trophy className="inline text-amber-500 mr-4 shrink-0" size={28}/> {okr.objetivo}</h4>
+               <div className="space-y-4">
+                  <div className="p-6 bg-black/20 rounded-[32px] border border-white/5 border-dashed text-center">
+                     <p className="text-[10px] font-bold text-slate-500 uppercase italic">Nenhum Key Result cadastrado.</p>
+                  </div>
+               </div>
             </div>
-          ))}
+        ))}
+      </div>
+
+      {isAdding && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-16 shadow-3xl text-center">
+              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter">Nova Estratégia de Governo</h4>
+              <div className="space-y-8">
+                 <div className="space-y-2 text-left">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Objetivo Estratégico</label>
+                    <textarea value={newOkr.objetivo} onChange={e => setNewOkr({...newOkr, objetivo: e.target.value})} placeholder="Ex: Transformar Camaquã em um Polo Logístico do RS..." className="w-full h-32 bg-black/30 border border-white/10 rounded-[32px] p-8 text-white outline-none focus:border-amber-500 font-bold italic resize-none shadow-inner" />
+                 </div>
+                 <div className="space-y-2 text-left">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Tipo de OKR</label>
+                    <div className="flex gap-4">
+                       {['Estratégico', 'Transversal', 'Setorial'].map(t => (
+                         <button key={t} onClick={() => setNewOkr({...newOkr, tipo: t})} className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase italic border transition-all ${newOkr.tipo === t ? 'bg-amber-600 border-amber-400 text-white' : 'bg-black/20 border-white/5 text-slate-500'}`}>{t}</button>
+                       ))}
+                    </div>
+                 </div>
+                 <div className="flex gap-6 pt-6">
+                    <button onClick={() => setIsAdding(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Descartar</button>
+                    <button onClick={handleAddOkr} className="flex-[2] py-5 bg-amber-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Confirmar Estratégia</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// [MODULE: SWOT GOVERNAMENTAL - v2.6.0 NOMINAL PERSISTENCE]
+const SWOTModule = ({ swotMatrices, setSwotMatrices, activeSwotId, setActiveSwotId }: any) => {
+  const [activeQuadrant, setActiveQuadrant] = useState<string | null>(null);
+  const [newItemText, setNewItemText] = useState('');
+  const [showNotification, setShowNotification] = useState<string | null>(null);
+  const [confirmNewModal, setConfirmNewModal] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  
+  const [saveName, setSaveName] = useState('');
+  const [saveRef, setSaveRef] = useState('');
+
+  const currentMatrix = useMemo(() => swotMatrices.find((m: any) => m.id === activeSwotId) || swotMatrices[0], [swotMatrices, activeSwotId]);
+
+  const QUADRANTS: Record<string, { label: string, microcopy: string, bgColor: string, borderColor: string, textColor: string }> = {
+    forcas: { label: 'Forças', microcopy: 'Fortalezas internas do governo que impulsionam resultados.', bgColor: 'bg-emerald-900/20', borderColor: 'border-emerald-500', textColor: 'text-emerald-400' },
+    fraquezas: { label: 'Fraquezas', microcopy: 'Limitações internas que exigem correção e governança.', bgColor: 'bg-amber-900/20', borderColor: 'border-amber-500', textColor: 'text-amber-400' },
+    oportunidades: { label: 'Oportunidades', microcopy: 'Cenários externos favoráveis para expansão de políticas.', bgColor: 'bg-sky-900/20', borderColor: 'border-sky-500', textColor: 'text-sky-400' },
+    ameacas: { label: 'Ameaças', microcopy: 'Riscos externos em radar que podem impactar a gestão.', bgColor: 'bg-rose-900/20', borderColor: 'border-rose-500', textColor: 'text-rose-400' }
+  };
+
+  const handleSaveMatrixRegistry = () => {
+    if (!saveName.trim()) {
+      alert("Nome da matriz é obrigatório.");
+      return;
+    }
+    
+    const updatedEntry = {
+      ...currentMatrix,
+      titulo: saveName,
+      referencia: saveRef,
+      ultimaEdicao: new Date().toISOString()
+    };
+    
+    const newMatrices = swotMatrices.map((m: any) => m.id === activeSwotId ? updatedEntry : m);
+    setSwotMatrices(newMatrices);
+    localStorage.setItem('camaqua360_swot_registry', JSON.stringify(newMatrices));
+    
+    setSaveModalOpen(false);
+    setShowNotification("Matriz consolidada no Registry Governamental.");
+    setTimeout(() => setShowNotification(null), 2000);
+  };
+
+  const addItem = () => {
+    if (!newItemText.trim() || !activeQuadrant) return;
+    const updatedMatrices = swotMatrices.map((m: any) => 
+      m.id === activeSwotId ? { ...m, data: { ...m.data, [activeQuadrant]: [...(m.data[activeQuadrant] || []), { id: Date.now(), texto: newItemText }] } } : m
+    );
+    setSwotMatrices(updatedMatrices);
+    setNewItemText(''); 
+    setActiveQuadrant(null);
+  };
+
+  const removeItem = (quad: string, id: number) => {
+    const updatedMatrices = swotMatrices.map((m: any) => 
+      m.id === activeSwotId ? { ...m, data: { ...m.data, [quad]: m.data[quad].filter((i: any) => i.id !== id) } } : m
+    );
+    setSwotMatrices(updatedMatrices);
+  };
+
+  return (
+    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+      {showNotification && (
+        <div className="fixed top-24 right-10 z-[7000] bg-emerald-600 text-white px-8 py-4 rounded-2xl shadow-3xl font-black uppercase text-[10px] tracking-widest animate-in slide-in-from-right flex items-center gap-2">
+          <CheckCircle2 size={16}/> {showNotification}
+        </div>
+      )}
+
+      <EducationalBanner 
+        title="Matriz SWOT Governamental" 
+        description="A análise SWOT é o ponto de partida estratégico para qualquer ação de governo. Este módulo gerencia o diagnóstico institucional através de um Registry persistente."
+        icon={Compass} 
+        color="emerald" 
+      />
+
+      {/* TOP ACTIONS BAR - Registry Management */}
+      <div className="bg-[#1f2937] border border-white/5 p-6 rounded-[32px] shadow-2xl flex flex-wrap items-center justify-between gap-6 mb-12">
+        <div className="flex items-center gap-4">
+           <div className="p-4 bg-indigo-500/10 text-indigo-400 rounded-xl shadow-inner"><History size={20}/></div>
+           <div className="flex flex-col">
+              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-2 mb-1 italic">Registry de Matrizes Salvas</span>
+              <select 
+                value={activeSwotId} 
+                onChange={(e) => setActiveSwotId(e.target.value)}
+                className="bg-black/40 border border-white/10 rounded-2xl px-6 py-3 text-white outline-none focus:border-indigo-500 font-bold text-xs italic min-w-[320px] shadow-lg"
+              >
+                {swotMatrices.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.titulo}</option>
+                ))}
+              </select>
+           </div>
+        </div>
+        <div className="flex items-center gap-4">
+           <button onClick={() => setConfirmNewModal(true)} className="flex items-center gap-2 px-8 py-4 bg-white/5 text-slate-300 rounded-[24px] font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all shadow-xl italic"><Plus size={16}/> Nova Matriz</button>
+           <button onClick={() => { setSaveName(currentMatrix.titulo); setSaveRef(currentMatrix.referencia || ''); setSaveModalOpen(true); }} className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-[24px] font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-indigo-500 transition-all italic"><Save size={16}/> Salvar Matriz</button>
+           <button onClick={() => window.print()} className="flex items-center gap-2 px-8 py-4 border border-indigo-500/30 text-indigo-400 rounded-[24px] font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 hover:text-white transition-all italic shadow-lg"><FileDown size={16}/> Exportar PDF</button>
         </div>
       </div>
-      <div className="flex-1 relative min-h-[400px]">
-        <MapContainer center={[-30.8520, -51.8120]} zoom={15} scrollWheelZoom={false} style={{ height: '100%', width: '100%', background: '#111827' }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <MapController center={[selectedPoint?.coordenadas.lat || -30.852, selectedPoint?.coordenadas.lng || -51.812]} />
-          {(escuta || []).map((e: any) => (<Marker key={e.id} position={[e.coordenadas.lat, e.coordenadas.lng]} icon={DefaultIcon}><Popup><div className="p-4"><h5 className="font-black text-xs uppercase text-amber-500">{e.tema}</h5><p className="text-[10px] text-slate-200 italic mt-1">"{e.descricao}"</p><div className="mt-3 pt-2 border-t border-white/5 flex gap-2"><span className="text-[8px] font-black text-slate-400 uppercase">{e.bairro}</span></div></div></Popup></Marker>))}
-        </MapContainer>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 h-[950px]">
+        {Object.entries(QUADRANTS).map(([key, config]) => (
+          <div key={key} className={`${config.bgColor} border ${config.borderColor} rounded-[64px] p-12 flex flex-col shadow-3xl relative overflow-hidden transition-all hover:border-white/10`}>
+             <div className="flex justify-between items-start mb-6 z-10">
+                <div className="space-y-3">
+                   <h4 className={`text-4xl font-black ${config.textColor} italic uppercase tracking-tighter leading-none`}>{config.label}</h4>
+                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest max-w-[320px] italic leading-relaxed">{config.microcopy}</p>
+                </div>
+                <button onClick={() => setActiveQuadrant(key)} className={`p-6 bg-black/40 ${config.textColor} rounded-3xl hover:bg-white/10 transition-all shadow-2xl border border-white/5`}><Plus size={32}/></button>
+             </div>
+             <div className="space-y-6 overflow-y-auto custom-scrollbar flex-1 pr-4 z-10 pt-4">
+                {(currentMatrix.data[key] || []).map((item: any) => (
+                  <div key={item.id} className="bg-black/40 p-8 rounded-[40px] border border-white/5 hover:border-white/10 transition-all flex justify-between group/item items-start gap-4 shadow-inner">
+                     <p className="text-[16px] font-bold text-white italic leading-relaxed tracking-tight">"{item.texto}"</p>
+                     <button onClick={() => removeItem(key, item.id)} className="text-slate-800 hover:text-rose-500 opacity-0 group-hover/item:opacity-100 transition-all shrink-0"><Trash2 size={20}/></button>
+                  </div>
+                ))}
+             </div>
+          </div>
+        ))}
       </div>
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 backdrop-blur-md bg-black/70 animate-in fade-in zoom-in-95">
-           <div className="bg-[#1f2937] border border-white/10 w-full max-w-2xl rounded-[60px] p-10 shadow-3xl">
-              <div className="flex justify-between items-center mb-12">
-                <h5 className="text-3xl font-black text-white italic uppercase">Novo Chamado Cidadão</h5>
-                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white"><X size={32}/></button>
+
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-16 shadow-3xl">
+              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter text-center">Salvar no histórico de diagnóstico</h4>
+              <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Nome da Matriz (Obrigatório)</label>
+                    <input autoFocus value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Ex: SWOT Geral Jan/25..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white outline-none focus:border-indigo-500 font-bold italic shadow-inner" />
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Referência / Projeto (Opcional)</label>
+                    <input value={saveRef} onChange={(e) => setSaveRef(e.target.value)} placeholder="Ex: Revitalização do Centro, Obra X..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white outline-none focus:border-indigo-500 font-bold italic" />
+                 </div>
+                 <div className="flex gap-6 pt-6">
+                    <button onClick={() => setSaveModalOpen(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button>
+                    <button onClick={handleSaveMatrixRegistry} className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-xl">Confirmar e Salvar</button>
+                 </div>
               </div>
-              <form onSubmit={(ev) => { 
-                ev.preventDefault(); 
-                const fd = new FormData(ev.currentTarget); 
-                onAdd({ 
-                  id: `ESC-${Date.now()}`, 
-                  data: new Date().toLocaleDateString('pt-BR'), 
-                  tema: fd.get('tema'), 
-                  descricao: fd.get('desc'), 
-                  bairro: fd.get('bairro'), 
-                  status: 'recebido', 
-                  coordenadas: { lat: -30.852 + (Math.random() * 0.01 - 0.005), lng: -51.812 + (Math.random() * 0.01 - 0.005) } 
-                }); 
-                setIsModalOpen(false); 
-              }} className="space-y-6">
-                <input name="tema" required placeholder="Tema (Ex: Iluminação, Asfalto)" className="w-full bg-black/20 border border-white/10 rounded-2xl px-6 py-4 text-white italic outline-none focus:border-amber-600" />
-                <textarea name="desc" required placeholder="Descrição da ocorrência..." className="w-full h-32 bg-black/20 border border-white/10 rounded-2xl px-6 py-4 text-white resize-none outline-none focus:border-amber-600 italic" />
-                <input name="bairro" required placeholder="Bairro" className="w-full bg-black/20 border border-white/10 rounded-2xl px-6 py-4 text-white italic outline-none focus:border-amber-600" />
-                <button type="submit" className="w-full py-5 bg-amber-600 text-white rounded-[32px] text-[11px] font-black uppercase italic hover:bg-amber-500 shadow-2xl">Registrar na Ouvidoria BI</button>
-              </form>
+           </div>
+        </div>
+      )}
+
+      {activeQuadrant && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-lg rounded-[60px] p-16 shadow-3xl text-center">
+              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter">Inserir em {QUADRANTS[activeQuadrant].label}</h4>
+              <textarea autoFocus value={newItemText} onChange={(e) => setNewItemText(e.target.value)} placeholder="Descreva o ponto estratégico..." className="w-full h-40 bg-black/30 border border-white/10 rounded-[32px] p-8 text-white mb-10 outline-none focus:border-indigo-500 font-bold italic shadow-inner" />
+              <div className="flex gap-6"><button onClick={() => setActiveQuadrant(null)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button><button onClick={addItem} className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-xl">Confirmar</button></div>
+           </div>
+        </div>
+      )}
+
+      {confirmNewModal && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] p-16 rounded-[60px] text-center w-full max-w-lg shadow-3xl border border-white/10">
+              <h4 className="text-3xl font-black text-white italic mb-8 uppercase tracking-tighter">Novo Diagnóstico?</h4>
+              <p className="text-slate-400 text-sm italic mb-10 leading-relaxed">Isso preparará uma nova matriz em branco. Certifique-se de salvar a atual se desejar mantê-la no histórico.</p>
+              <div className="flex gap-6"><button onClick={() => setConfirmNewModal(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Não</button><button onClick={() => {
+                const newId = `SWOT-${Date.now()}`;
+                const newMatrix = { id: newId, titulo: `Nova Matriz - ${new Date().toLocaleDateString('pt-BR')}`, dataCriacao: new Date().toISOString(), ultimaEdicao: new Date().toISOString(), data: { forcas: [], fraquezas: [], oportunidades: [], ameacas: [] } };
+                setSwotMatrices([newMatrix, ...swotMatrices]);
+                setActiveSwotId(newId); setConfirmNewModal(false);
+              }} className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Sim, Iniciar</button></div>
            </div>
         </div>
       )}
@@ -574,31 +521,59 @@ const CitizenListening = ({ escuta, onAdd }: any) => {
   );
 };
 
-// [SECTION: GOVERNANCE MANUAL]
-const GovernanceManual = () => {
-  return (
-    <div className="space-y-12 animate-in fade-in duration-700 pb-32">
-      <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-[48px] p-12 lg:p-16 border border-white/10 shadow-3xl">
-        <div className="flex items-center gap-4 mb-8">
-           <div className="p-4 bg-white/10 rounded-3xl backdrop-blur-md"><BookOpen className="text-indigo-400" size={32}/></div>
-           <h2 className="text-4xl lg:text-6xl font-black text-white italic uppercase tracking-tighter">Manual de Governança C360</h2>
-        </div>
-        <p className="text-lg text-slate-400 leading-relaxed italic max-w-4xl">Este manual estabelece as diretrizes para a gestão de impacto e inteligência governamental da Prefeitura de Camaquã. O sistema utiliza metodologias ágeis (Kanban) e gestão por resultados (OKRs).</p>
+// [MODULE: TERRITÓRIO VIVO - IMMUTABLE LOCK]
+const CitizenListening = memo(({ escuta }: any) => (
+  <div className="flex h-[80vh] bg-[#1f2937] rounded-[64px] border border-white/5 overflow-hidden shadow-3xl animate-in fade-in duration-500">
+    <div className="w-[35%] border-r border-white/5 flex flex-col bg-black/10">
+      <div className="p-10 border-b border-white/5 bg-black/20 shrink-0"><h3 className="text-xl font-black text-white italic uppercase tracking-tighter leading-none">Camaquã<br/><span className="text-indigo-500 text-sm">Território Vivo</span></h3></div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+        {escuta.map((item: any) => (
+          <div key={item.id} className="p-8 rounded-[40px] border border-white/5 bg-white/5">
+             <h4 className="text-[15px] font-black text-white italic leading-tight mb-4 tracking-tight">{item.tema}</h4>
+             <div className="flex flex-col gap-1 mb-4"><p className="text-[10px] text-slate-400 italic">📍 {item.rua}, {item.bairro}</p>{item.cep && <p className="text-[10px] text-indigo-400 font-black">CEP: {item.cep}</p>}</div>
+             <StatusBadge status={item.status === 'recebido' ? 'Aberta' : item.status === 'resolvido' ? 'Resolvida' : 'Em Andamento'} />
+          </div>
+        ))}
       </div>
+    </div>
+    <div className="flex-1 relative bg-black/40 flex items-center justify-center italic opacity-30 uppercase font-black tracking-[1em] text-[10px]">Mapa Territorial Protegido (HARD_LOCK)</div>
+  </div>
+));
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {[
-          { title: 'Gestão de Demandas', desc: 'Utilize o Kanban para monitorar o fluxo de entregas de cada secretaria. Cards inertes por mais de 3 dias são sinalizados em vermelho.', icon: FolderKanban },
-          { title: 'OKR & Estratégia', desc: 'Os Objetivos e Resultados-Chave (OKRs) definem as metas prioritárias do governo. A Matriz SWOT auxilia no diagnóstico de riscos.', icon: Target },
-          { title: 'Território Vivo', desc: 'A Escuta Cidadã é a principal ferramenta de feedback direto da população, georreferenciada para melhor tomada de decisão.', icon: MapIcon },
-          { title: 'Segurança BI', desc: 'Dados financeiros sensíveis são protegidos por camadas de autenticação local. Use a senha de acesso para visualizar o saldo em caixa.', icon: ShieldCheck },
-        ].map((item, idx) => (
-          <div key={idx} className="bg-[#1f2937] border border-white/5 p-10 rounded-[40px] shadow-xl hover:border-indigo-500/20 transition-all flex gap-8 items-start">
-             <div className="p-5 bg-black/20 rounded-[28px] text-indigo-400"><item.icon size={24}/></div>
-             <div>
-               <h4 className="text-xl font-black text-white italic uppercase mb-4">{item.title}</h4>
-               <p className="text-sm text-slate-500 leading-relaxed font-bold italic uppercase">{item.desc}</p>
-             </div>
+// [MODULE: MANUAL DE GOVERNANÇA - v2.6.0 SCHOOL OF GOV]
+const GovernanceManual = () => {
+  const SECTIONS = [
+    {
+      title: "1. O que é Governança Pública",
+      content: "Diferente da gestão cotidiana, a governança é o sistema que garante que a Prefeitura tome as decisões certas. No BI 360°, isso significa alinhar o orçamento, a opinião técnica e a vontade política para entregar resultados reais ao cidadão camaquense."
+    },
+    {
+      title: "2. Como usar OKRs na Prefeitura",
+      content: "OKR não é tarefa, é resultado. Cada estratégia lançada no módulo OKR deve responder: 'Como saberemos que Camaquã melhorou?'. Use as micro-entregas para rastrear o progresso semanal de cada meta prioritária."
+    },
+    {
+      title: "3. Matriz SWOT como Bússola",
+      content: "Use a SWOT antes de lançar novos projetos. Identifique o que temos de forte (equipe técnica, frota) e o que nos ameaça (questões jurídicas, clima). Salve as matrizes por projeto no Registry para consultas futuras."
+    },
+    {
+      title: "4. Kanban das Secretarias",
+      content: "O Kanban é a sala de máquinas. Cada secretaria deve atualizar suas pautas diariamente. Cards em 'Parado' ou 'Depende de' são prioridades de articulação para o Prefeito e Secretário de Governo."
+    },
+    {
+      title: "5. Ritmo Semanal e Papéis",
+      content: "Segunda-feira: Priorização. Quarta-feira: Articulação Intersecretarial. Sexta-feira: Prestação de contas. O Prefeito arbitra conflitos; os Secretários garantem a execução; a Equipe Técnica alimenta o BI."
+    }
+  ];
+
+  return (
+    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+      <EducationalBanner title="Escola de Governo" description="Manual de Governança Institucional e Ritos de Gestão para o Gabinete Municipal de Camaquã." icon={BookOpen} color="slate" />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        {SECTIONS.map((sec, i) => (
+          <div key={i} className="bg-[#1f2937] border border-white/5 p-12 rounded-[56px] shadow-2xl">
+             <h4 className="text-xl font-black text-white italic uppercase mb-6 tracking-tight flex items-center gap-4"><Info className="text-indigo-400" size={24}/> {sec.title}</h4>
+             <p className="text-slate-400 text-sm italic leading-relaxed font-medium">{sec.content}</p>
           </div>
         ))}
       </div>
@@ -609,8 +584,8 @@ const GovernanceManual = () => {
 // [MAIN APP ENGINE]
 const App = () => {
   const [activeTab, setActiveTab] = useState('prefeito');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [insights, setInsights] = useState<string>('Painel Executivo v1.8.0...');
+  const [insights, setInsights] = useState<string>('Auditando integridade do BI...');
+  const [selectedSecretaria, setSelectedSecretaria] = useState<Secretaria | null>(null);
 
   const getInitialState = (key: string, defaultValue: any) => {
     try {
@@ -620,68 +595,83 @@ const App = () => {
   };
 
   const [kanbanRegistry, setKanbanRegistry] = useState(() => getInitialState('c360_kanban', MOCK_DATA.secretarias.reduce((acc, s) => ({ ...acc, [s.id]: [] }), {})));
-  const [localEscuta, setLocalEscuta] = useState(() => getInitialState('c360_escuta', MOCK_DATA.escuta));
-  const [swotItems, setSwotItems] = useState(() => getInitialState('c360_swot', MOCK_DATA.swot));
-  const [okrs, setOkrs] = useState(() => getInitialState('c360_okrs', MOCK_DATA.okrs));
-  const [archivedOkrs, setArchivedOkrs] = useState(() => getInitialState('c360_archived_okrs', []));
+  const [okrs, setOkrs] = useState(() => getInitialState('c360_okrs', []));
+  const [swotMatrices, setSwotMatrices] = useState(() => getInitialState('camaqua360_swot_registry', [{ id: 'SWOT-001', titulo: 'SWOT Geral 2025', dataCriacao: new Date().toISOString(), ultimaEdicao: new Date().toISOString(), data: MOCK_DATA.swot }]));
+  const [activeSwotId, setActiveSwotId] = useState(() => getInitialState('c360_active_swot_id', 'SWOT-001'));
+  const [escuta, setEscuta] = useState(() => getInitialState('c360_escuta', []));
 
   useEffect(() => {
-    setIsSyncing(true);
     localStorage.setItem('c360_kanban', JSON.stringify(kanbanRegistry));
-    localStorage.setItem('c360_escuta', JSON.stringify(localEscuta));
-    localStorage.setItem('c360_swot', JSON.stringify(swotItems));
     localStorage.setItem('c360_okrs', JSON.stringify(okrs));
-    localStorage.setItem('c360_archived_okrs', JSON.stringify(archivedOkrs));
-    const timer = setTimeout(() => setIsSyncing(false), 800);
-    return () => clearTimeout(timer);
-  }, [kanbanRegistry, localEscuta, swotItems, okrs, archivedOkrs]);
+    localStorage.setItem('camaqua360_swot_registry', JSON.stringify(swotMatrices));
+    localStorage.setItem('c360_active_swot_id', JSON.stringify(activeSwotId));
+    localStorage.setItem('c360_escuta', JSON.stringify(escuta));
+  }, [kanbanRegistry, okrs, swotMatrices, activeSwotId, escuta]);
 
-  const [selectedSecretaria, setSelectedSecretaria] = useState<Secretaria | null>(null);
-  useEffect(() => { getGovernmentInsights(MOCK_DATA).then(res => setInsights(res || "Monitoramento BI Ativo.")); }, []);
+  useEffect(() => {
+    const loadInsights = async () => {
+      const dashboardState: any = { ...MOCK_DATA, kanbanCards: Object.values(kanbanRegistry).flat(), okrs, escuta };
+      const text = await getGovernmentInsights(dashboardState);
+      setInsights(text || "Dashboard executivo sob protocolo v2.6.0.");
+    };
+    loadInsights();
+  }, [kanbanRegistry, okrs]);
+
+  const renderModule = () => {
+    switch(activeTab) {
+      case 'prefeito': return <MacroDashboard data={MOCK_DATA} selectedSecretaria={selectedSecretaria} setSelectedSecretaria={setSelectedSecretaria} kanbanRegistry={kanbanRegistry} onUpdateKanban={(id:any,nc:any)=>setKanbanRegistry({...kanbanRegistry,[id]:nc})} />;
+      case 'projetos': return <GestaoProjetos projetos={[]} />;
+      case 'okr': return <OKRModule okrs={okrs} setOkrs={setOkrs} />;
+      case 'swot': return <SWOTModule swotMatrices={swotMatrices} setSwotMatrices={setSwotMatrices} activeSwotId={activeSwotId} setActiveSwotId={setActiveSwotId} />;
+      case 'escuta': return <CitizenListening escuta={escuta} />;
+      case 'governanca': return <GovernanceManual />;
+      default: return null;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans flex flex-col relative overflow-x-hidden">
-      {/* HUD de Monitoramento */}
-      <div className="w-full bg-[#1e293b]/70 border-b border-white/5 py-5 px-8 backdrop-blur-md z-[2000] sticky top-0 shadow-lg">
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-           <div className="flex items-center gap-4 flex-1">
-             <div className="p-2.5 bg-indigo-500 rounded-xl shadow-lg"><Lightbulb size={16} className="text-white"/></div>
-             <p className="text-[11px] font-bold text-slate-300 italic truncate tracking-wide uppercase">{insights}</p>
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans flex flex-col relative custom-scrollbar overflow-x-hidden">
+      {/* TOP BAR */}
+      <div className="w-full bg-[#1e293b]/95 border-b border-white/5 py-6 px-10 backdrop-blur-md z-[2000] sticky top-0 flex items-center justify-between shadow-2xl">
+           <div className="flex items-center gap-5 flex-1 overflow-hidden">
+             <div className="p-3 bg-indigo-500 rounded-2xl animate-pulse shadow-lg"><Lightbulb size={18} className="text-white"/></div>
+             <p className="text-[12px] font-bold text-slate-300 italic truncate leading-none tracking-tight">{insights}</p>
            </div>
-           <div className="hidden lg:flex items-center gap-6">
-             <div className="flex items-center gap-2 px-4 py-1.5 bg-black/40 rounded-full border border-white/10">
-                <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                <span className="text-[9px] font-black uppercase text-slate-400">{isSyncing ? 'Persistindo BI...' : 'BI Persistente OK'}</span>
+           <div className="flex items-center gap-8 shrink-0 ml-6">
+             <div className="flex items-center gap-3 px-5 py-2 bg-black/40 rounded-full border border-white/10 shadow-inner">
+               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">BI 360 PROTEGIDO</span>
              </div>
-             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest italic border-l border-white/10 pl-8">v1.8.0 SOVEREIGN GOVERNANCE</span>
+             <span className="text-[11px] font-black text-indigo-400 uppercase tracking-widest italic border-l border-white/10 pl-8">{VERSION} • AUDIT MODE</span>
            </div>
-        </div>
       </div>
 
-      <main className="flex-1 w-full max-w-[1600px] mx-auto p-6 lg:p-14">
-        <header className="mb-20 flex flex-col lg:flex-row lg:items-center justify-between gap-12">
-            <div className="flex items-center gap-6">
-              <div className="w-16 h-16 bg-indigo-600 rounded-[28px] flex items-center justify-center text-white shadow-2xl"><Globe size={32} /></div>
-              <div>
-                <h1 className="text-5xl lg:text-8xl font-black text-white tracking-tighter uppercase italic leading-none">CAMAQUÃ 360</h1>
-                <p className="text-slate-500 text-[12px] font-black uppercase tracking-[0.6em] ml-2 italic mt-2">Inteligência Governamental & Gestão de Impacto</p>
-              </div>
-            </div>
+      <main className="flex-1 w-full max-w-[1700px] mx-auto p-8 lg:p-16">
+        <header className="mb-20 animate-in slide-in-from-top duration-700">
+          <h1 className="text-4xl lg:text-[7.2rem] font-black text-white tracking-tighter uppercase italic leading-none opacity-95 transition-all">CAMAQUÃ 360°</h1>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8 mt-6 ml-3 opacity-70">
+            <p className="text-slate-500 text-[13px] font-black uppercase tracking-widest italic flex items-center gap-2">
+              Prefeito: <span className="text-slate-300">{EXECUTIVO.prefeito}</span>
+            </p>
+            <span className="hidden md:inline text-slate-800 text-lg">/</span>
+            <p className="text-slate-500 text-[13px] font-black uppercase tracking-widest italic flex items-center gap-2">
+              Vice-prefeito: <span className="text-slate-300">{EXECUTIVO.vice}</span>
+            </p>
+          </div>
+          <p className="text-slate-500 text-[14px] font-black uppercase tracking-[0.9em] ml-3 italic mt-6 opacity-30">Inteligência Governamental e Governança</p>
         </header>
 
-        {activeTab === 'prefeito' && <MacroDashboard data={MOCK_DATA} selectedSecretaria={selectedSecretaria} setSelectedSecretaria={setSelectedSecretaria} kanbanRegistry={kanbanRegistry} onUpdateKanban={(secId: any, cards: any) => setKanbanRegistry((p: any) => ({ ...p, [secId]: cards }))} />}
-        {activeTab === 'estrategia' && <EstrategiaModule swotItems={swotItems} setSwotItems={setSwotItems} okrs={okrs} setOkrs={setOkrs} archivedOkrs={archivedOkrs} setArchivedOkrs={setArchivedOkrs} />}
-        {activeTab === 'escuta' && <CitizenListening escuta={localEscuta} onAdd={(newE: any) => setLocalEscuta((p: any) => [newE, ...p])} />}
-        {activeTab === 'governanca' && <GovernanceManual />}
+        {renderModule()}
       </main>
 
-      {/* Navegação High-End */}
-      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-4xl px-8">
-        <nav className="bg-[#1e293b]/95 backdrop-blur-3xl border border-white/10 p-4 rounded-[50px] shadow-2xl flex items-center justify-around">
+      {/* DOCK NAVIGATION */}
+      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-5xl px-8">
+        <nav className="bg-[#1e293b]/95 backdrop-blur-3xl border border-white/10 p-5 rounded-[60px] shadow-[0_30px_60px_rgba(0,0,0,0.8)] flex items-center justify-around">
           {NAVIGATION.map((item) => (
-            <button key={item.id} onClick={() => { setActiveTab(item.id); setSelectedSecretaria(null); }} className={`relative flex flex-col items-center justify-center w-24 h-18 rounded-[32px] transition-all duration-300 ${activeTab === item.id ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-200'}`}>
-              <item.icon size={activeTab === item.id ? 28 : 22} />
-              <span className={`text-[9px] font-black uppercase tracking-tighter mt-1 ${activeTab === item.id ? 'opacity-100' : 'opacity-0'}`}>{item.name}</span>
+            <button key={item.id} onClick={() => { setActiveTab(item.id); setSelectedSecretaria(null); }} className={`relative flex flex-col items-center justify-center w-32 h-20 rounded-[36px] transition-all duration-500 ${activeTab === item.id ? 'text-indigo-400 bg-indigo-500/15 shadow-inner' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+              <item.icon size={activeTab === item.id ? 32 : 24} className="transition-all" />
+              <span className={`text-[9px] font-black uppercase tracking-tighter mt-2 transition-all ${activeTab === item.id ? 'opacity-100 translate-y-0' : 'opacity-60'}`}>{item.name}</span>
+              {activeTab === item.id && <div className="absolute -bottom-3 w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_20px_rgba(99,102,241,1)]"></div>}
             </button>
           ))}
         </nav>
@@ -689,5 +679,13 @@ const App = () => {
     </div>
   );
 };
+
+// [MODULE PLACEHOLDERS FOR LOCKED]
+const GestaoProjetos = ({ projetos }: any) => (
+  <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+    <EducationalBanner title="Gestão de Projetos" description="Acompanhamento de prazos e metas prioritárias." icon={Briefcase} color="indigo" />
+    <div className="bg-[#1f2937] border border-white/5 rounded-[64px] overflow-hidden shadow-3xl flex items-center justify-center h-96 italic opacity-20 uppercase font-black tracking-[1em] text-[10px]">Módulo Estrutural Protegido</div>
+  </div>
+);
 
 export default App;

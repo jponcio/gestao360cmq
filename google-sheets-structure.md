@@ -1,43 +1,41 @@
 
-# Estrutura do Google Sheets - BI 360° Camaquã
+# Estrutura do Google Sheets - BI 360° Camaquã (v1.9.0)
 
-Para que o dashboard funcione, crie as seguintes abas (sheets) com estas colunas exatas na primeira linha:
+Crie uma planilha no Google Drive e adicione as seguintes abas com os cabeçalhos na primeira linha:
 
-### 1. secretarias
+### 1. kanban_data
+- `id` (ID do Card)
+- `secretariaId` (Ex: S1, S2...)
+- `titulo`
+- `dono` (Responsável)
+- `status` (Backlog, Em Andamento, Depende de, Concluído)
+- `atualizadoEm` (Data ISO)
+- `justificativa`
+- `tipo` (Operacional, Estratégico...)
+
+### 2. okr_data
 - `id`
-- `nome`
-- `secretario`
+- `objetivo`
+- `krs_json` (Texto contendo os Key Results em formato JSON)
+- `archived_krs_json`
+- `status_geral`
 
-### 2. indicadores
-- `data`
-- `secretaria`
-- `indicador`
-- `valor`
-- `unidade`
-- `status` (ok | atencao | critico)
+### 3. swot_data
+- `id`
+- `quadrante` (forcas, fraquezas, oportunidades, ameacas)
+- `texto`
 - `responsavel`
 
-### 3. prioridades_semanais
-- `semana`
-- `secretaria`
-- `p1`
-- `p2`
-- `p3`
-- `status`
-- `justificativa`
-
-### 4. entregas
+### 4. escuta_cidada
 - `id`
-- `secretaria`
-- `entrega`
-- `status` (concluida | andamento | atrasada)
-- `impacto`
-- `validadoPor`
-
-### 5. escuta_cidada
 - `data`
 - `tema`
 - `descricao`
 - `bairro`
+- `lat`
+- `lng`
 - `status`
-- `secretaria`
+
+### 5. configuracoes
+- `chave`
+- `valor` (Para armazenar saldo em caixa, arrecadação, etc)

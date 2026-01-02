@@ -126,7 +126,7 @@ const PerformanceChart = ({ demands, deliveries, bottlenecks }: any) => {
   );
 };
 
-// --- MÓDULO: TERRITÓRIO VIVO (PRESERVADO) ---
+// --- MÓDULO: TERRITÓRIO VIVO ---
 const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => {
   const [iaAnalysis, setIaAnalysis] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -134,12 +134,6 @@ const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => 
   const [newDemand, setNewDemand] = useState({ 
     tema: '', bairro: '', rua: '', nro: '', cep: '', nome: '', telefone: '' 
   });
-
-  const runAnalysis = async () => {
-    setIaAnalysis("Analisando territórios prioritários...");
-    const res = await getTerritoryIntervention(escuta);
-    setIaAnalysis(res);
-  };
 
   const handleCEPBlur = async () => {
     const cleanCep = newDemand.cep.replace(/\D/g, '');
@@ -149,7 +143,7 @@ const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => 
         const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
         const data = await res.json();
         if (!data.erro) {
-          setNewDemand(prev => ({ ...prev, rua: data.logradouro, bairro: data.bairro }));
+          setNewDemand(prev => ({ ...prev, rua: data.logradouro || '', bairro: data.bairro || '' }));
         }
       } catch (e) { console.error("CEP Erro", e); }
       finally { setLoadingCep(false); }
@@ -157,7 +151,10 @@ const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => 
   };
 
   const handleSaveDemand = () => {
-    if (!newDemand.tema.trim() || !newDemand.nome.trim()) return;
+    if (!newDemand.tema.trim() || !newDemand.nome.trim()) {
+      alert("Por favor, preencha a descrição da demanda e o nome do solicitante.");
+      return;
+    }
     const demand: EscutaCidada = {
       id: `E-${Date.now()}`, data: new Date().toISOString(), tema: newDemand.tema,
       descricao: `Nome: ${newDemand.nome} | Contato: ${newDemand.telefone}`, rua: newDemand.rua, nro: newDemand.nro,
@@ -228,6 +225,59 @@ const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => 
           </MapContainer>
         </div>
       </div>
+
+      {isAdding && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-3xl rounded-[64px] p-12 shadow-3xl max-h-[95vh] overflow-y-auto custom-scrollbar">
+              <h4 className="text-4xl font-black text-white italic uppercase mb-12 text-center tracking-tighter">Lançar Demanda Municipal</h4>
+              <div className="space-y-8">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Nome do Solicitante</label>
+                       <input value={newDemand.nome} onChange={e=>setNewDemand({...newDemand, nome: e.target.value})} placeholder="Ex: João da Silva..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">WhatsApp / Telefone</label>
+                       <input value={newDemand.telefone} onChange={e=>setNewDemand({...newDemand, telefone: e.target.value})} placeholder="(51) 99999-9999" className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white italic outline-none focus:border-indigo-500 shadow-inner" />
+                    </div>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Descrição da Demanda</label>
+                    <input value={newDemand.tema} onChange={e=>setNewDemand({...newDemand, tema: e.target.value})} placeholder="Ex: Substituição de lâmpada queimada no poste..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="space-y-2 col-span-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">CEP</label>
+                       <input value={newDemand.cep} onBlur={handleCEPBlur} onChange={e=>setNewDemand({...newDemand, cep: e.target.value})} placeholder="96180-000" className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold outline-none focus:border-indigo-500 shadow-inner" />
+                       {loadingCep && <span className="text-[8px] text-indigo-400 px-4 animate-pulse">Buscando endereço...</span>}
+                    </div>
+                    <div className="space-y-2 col-span-3">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Bairro</label>
+                       <input value={newDemand.bairro} onChange={e=>setNewDemand({...newDemand, bairro: e.target.value})} placeholder="Bairro..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white italic outline-none focus:border-indigo-500 shadow-inner" />
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-4 gap-6">
+                    <div className="space-y-2 col-span-3">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Logradouro (Rua)</label>
+                       <input value={newDemand.rua} onChange={e=>setNewDemand({...newDemand, rua: e.target.value})} placeholder="Nome da rua..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white italic outline-none focus:border-indigo-500 shadow-inner" />
+                    </div>
+                    <div className="space-y-2 col-span-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">N°</label>
+                       <input value={newDemand.nro} onChange={e=>setNewDemand({...newDemand, nro: e.target.value})} placeholder="S/N" className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold outline-none focus:border-indigo-500 shadow-inner" />
+                    </div>
+                 </div>
+
+                 <div className="flex gap-6 pt-12">
+                    <button onClick={()=>setIsAdding(false)} className="flex-1 py-7 bg-white/5 rounded-[40px] font-black uppercase text-slate-500 italic tracking-widest hover:bg-rose-500/10 hover:text-rose-500 transition-all">Cancelar</button>
+                    <button onClick={handleSaveDemand} className="flex-[2] py-7 bg-indigo-600 text-white rounded-[40px] font-black uppercase italic shadow-2xl tracking-widest border border-white/10 hover:bg-indigo-500 transition-all">Gravar e Georreferenciar</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 });

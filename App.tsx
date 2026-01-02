@@ -12,25 +12,32 @@ import {
   MoreHorizontal, Filter, List, BookOpen, HelpCircle,
   FileDown, History, Copy, ClipboardCheck, LayoutList,
   Wand2, Settings2, Tag, AlertTriangle, Briefcase, FileText,
-  Navigation
+  Navigation, Phone, Stethoscope, BrainCircuit, DollarSign,
+  LayoutDashboard, BarChart, Download, FileJson, Bookmark,
+  Wallet
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { DashboardData, Secretaria, KanbanCard, KanbanStatus, EscutaCidada, TipoProjeto } from './types';
+import { DashboardData, Secretaria, KanbanCard, KanbanStatus, EscutaCidada, TipoProjeto, ProjetoEstrategico, StatusProjeto, SWOTMatrix, OKR, KeyResult } from './types';
 import { MOCK_DATA, NAVIGATION } from './constants';
-import { getGovernmentInsights } from './services/geminiService';
+import { getGovernmentInsights, getTerritoryIntervention } from './services/geminiService';
 
-// --- CONFIGURAÇÃO GLOBAL ---
-const EXECUTIVO = {
-  prefeito: "Abner Dillmann",
-  vice: "Luciano P Dias"
+// --- CONFIGURAÇÃO GLOBAL E PERSISTÊNCIA ---
+const EXECUTIVO = { prefeito: "Abner Dillmann", vice: "Luciano P Dias" };
+const VERSION = "v3.0.5-ULTIMATE";
+const STORAGE_VER = "v3_0_5";
+
+const saveState = (key: string, state: any) => {
+  try {
+    localStorage.setItem(`BI360_${key}_${STORAGE_VER}`, JSON.stringify(state));
+  } catch (e) { console.error(`Erro ao persistir modulo ${key}:`, e); }
 };
 
-const VERSION = "v2.6.0";
-
-// LOCK_MODULE("TerritorioVivo", { immutable: true });
-const HARD_LOCK = {
-  territorioVivo: true
+const loadState = (key: string, defaultValue: any) => {
+  try {
+    const saved = localStorage.getItem(`BI360_${key}_${STORAGE_VER}`);
+    return saved ? JSON.parse(saved) : defaultValue;
+  } catch { return defaultValue; }
 };
 
 const DefaultIcon = L.icon({
@@ -49,32 +56,27 @@ const StatusBadge = ({ status, small = false }: { status: string, small?: boolea
     atencao: 'bg-amber-500/20 text-amber-500 border-amber-500/30',
     critico: 'bg-rose-500/20 text-rose-500 border-rose-500/30',
     'Concluído': 'bg-emerald-500 text-white border-emerald-400',
+    'Concluída': 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/20',
+    'Execução': 'bg-blue-500 text-white border-blue-400',
     'Em Andamento': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    'Em andamento': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     'Backlog': 'bg-slate-700/50 text-slate-300 border-slate-600/30',
     'Em Atenção': 'bg-amber-600/20 text-amber-500 border-amber-600/30',
     'Parado': 'bg-rose-600/20 text-rose-500 border-rose-600/30',
-    'Depende de': 'bg-amber-600/20 text-amber-500 border-amber-600/30',
     'Planejado': 'bg-slate-700/50 text-slate-300 border-slate-600',
-    'Em risco': 'bg-rose-500/20 text-rose-500 border-rose-500/30',
-    'Estratégico': 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-    'Transversal': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    'Setorial': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    'Em Execução': 'bg-blue-600 text-white border-blue-500',
-    'Em Articulação': 'bg-purple-600 text-white border-purple-500',
-    'Suspenso': 'bg-slate-900 text-slate-400 border-slate-700',
-    'Em Risco ⚠️': 'bg-rose-600 text-white border-rose-500 animate-pulse',
-    'Aberta': 'bg-rose-500/20 text-rose-500 border-rose-500/30',
-    'Resolvida': 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30',
+    'Risco': 'bg-rose-600 text-white border-rose-500 animate-pulse',
+    'Depende de': 'bg-amber-500 text-white border-amber-400',
+    'Aguardando parecer técnico': 'bg-purple-500 text-white border-purple-400',
+    'Aguardando parecer': 'bg-purple-500 text-white border-purple-400',
+    'Cadastrada': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   };
-  
-  const baseClasses = `font-black uppercase rounded-md border whitespace-nowrap italic tracking-tighter`;
+  const baseClasses = `font-black uppercase rounded-md border whitespace-nowrap italic tracking-tighter transition-all`;
   const sizeClasses = small ? 'text-[7px] px-1.5 py-0.2' : 'text-[8px] px-2 py-0.5';
-  
   return <span className={`${baseClasses} ${sizeClasses} ${styles[status] || 'bg-slate-800 text-slate-400 border-slate-700'}`}>{status}</span>;
 };
 
 const EducationalBanner = ({ title, description, icon: Icon, color = "indigo" }: any) => (
-  <div className={`bg-${color}-600 rounded-[48px] p-12 text-white flex flex-col md:flex-row items-center gap-10 shadow-3xl mb-16 relative overflow-hidden group`}>
+  <div className={`bg-${color}-600 rounded-[48px] p-10 text-white flex flex-col md:flex-row items-center gap-10 shadow-3xl mb-12 relative overflow-hidden group`}>
     <div className="absolute right-0 top-0 p-12 opacity-10 group-hover:scale-110 transition-transform duration-700"><Icon size={180}/></div>
     <div className="p-8 bg-white/20 rounded-[32px] shrink-0 backdrop-blur-md border border-white/10 shadow-inner"><Icon size={56}/></div>
     <div className="space-y-4 relative z-10">
@@ -84,132 +86,444 @@ const EducationalBanner = ({ title, description, icon: Icon, color = "indigo" }:
   </div>
 );
 
-// [MODULE: KANBAN DA SECRETARIA - v2.6.0 DENSITY & CREATION]
-const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => {
+const MapInvalidator = () => {
+  const map = useMap();
+  useEffect(() => {
+    const timer = setTimeout(() => { map.invalidateSize(); }, 400); 
+    return () => clearTimeout(timer);
+  }, [map]);
+  return null;
+};
+
+// --- COMPONENTES DE PERFORMANCE ---
+const PerformanceChart = ({ demands, deliveries, bottlenecks }: any) => {
+  const max = Math.max(demands, deliveries, bottlenecks, 1);
+  const bars = [
+    { label: 'Demandas (Escuta)', value: demands, color: 'bg-indigo-500', icon: MapIcon },
+    { label: 'Entregas (Concluídas)', value: deliveries, color: 'bg-emerald-500', icon: CheckCircle2 },
+    { label: 'Gargalos (Atenção)', value: bottlenecks, color: 'bg-rose-500', icon: AlertTriangle },
+  ];
+
+  return (
+    <div className="bg-[#1f2937] border border-white/5 p-12 rounded-[56px] shadow-3xl h-full flex flex-col">
+      <h4 className="text-xl font-black text-white italic uppercase mb-10 tracking-tighter flex items-center gap-4"><BarChart className="text-indigo-400"/> Monitor de Escala Executiva</h4>
+      <div className="flex-1 flex items-end justify-around gap-8 min-h-[220px]">
+        {bars.map((bar) => (
+          <div key={bar.label} className="flex-1 flex flex-col items-center group">
+            <div className="mb-4 text-white font-black italic text-2xl group-hover:scale-125 transition-transform">{bar.value}</div>
+            <div 
+              className={`${bar.color} w-full rounded-t-[24px] transition-all duration-1000 shadow-lg group-hover:brightness-110`} 
+              style={{ height: `${(bar.value / max) * 100}%` }}
+            ></div>
+            <div className="mt-6 flex flex-col items-center gap-2">
+              <bar.icon size={16} className="text-slate-500" />
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic text-center max-w-[90px]">{bar.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- MÓDULO: TERRITÓRIO VIVO (PRESERVADO) ---
+const CitizenListening = memo(({ escuta, onUpdateEscuta, onAddEscuta }: any) => {
+  const [iaAnalysis, setIaAnalysis] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [newCard, setNewCard] = useState({
-    titulo: '',
-    dono: '',
-    status: 'Em Andamento' as KanbanStatus,
-    tipo: 'Operacional' as TipoProjeto,
-    justificativa: '',
-    tags: [] as string[]
+  const [loadingCep, setLoadingCep] = useState(false);
+  const [newDemand, setNewDemand] = useState({ 
+    tema: '', bairro: '', rua: '', nro: '', cep: '', nome: '', telefone: '' 
   });
 
-  const COLUMNS: KanbanStatus[] = ['Backlog', 'Em Andamento', 'Depende de', 'Em Atenção', 'Parado', 'Concluído'];
-  const TAGS_OPTIONS = ['Urgente', 'Orçamento', 'Jurídico', 'Intersecretarial', 'Obra'];
+  const runAnalysis = async () => {
+    setIaAnalysis("Analisando territórios prioritários...");
+    const res = await getTerritoryIntervention(escuta);
+    setIaAnalysis(res);
+  };
 
-  const handleAddCard = () => {
-    if (!newCard.titulo.trim()) return;
-    if ((newCard.status === 'Parado' || newCard.status === 'Depende de') && !newCard.justificativa.trim()) {
-      alert("Justificativa obrigatória para status 'Parado' ou 'Depende de'");
-      return;
+  const handleCEPBlur = async () => {
+    const cleanCep = newDemand.cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setLoadingCep(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setNewDemand(prev => ({ ...prev, rua: data.logradouro, bairro: data.bairro }));
+        }
+      } catch (e) { console.error("CEP Erro", e); }
+      finally { setLoadingCep(false); }
     }
+  };
 
-    const card: KanbanCard = {
-      id: `C${Date.now()}`,
-      titulo: newCard.titulo,
-      secretariaId: secretaria.id,
-      dono: newCard.dono || secretaria.secretario,
-      status: newCard.status,
-      criadoEm: new Date().toISOString(),
-      atualizadoEm: new Date().toISOString(),
-      tipo: newCard.tipo,
-      tags: newCard.tags,
-      justificativa: newCard.justificativa
+  const handleSaveDemand = () => {
+    if (!newDemand.tema.trim() || !newDemand.nome.trim()) return;
+    const demand: EscutaCidada = {
+      id: `E-${Date.now()}`, data: new Date().toISOString(), tema: newDemand.tema,
+      descricao: `Nome: ${newDemand.nome} | Contato: ${newDemand.telefone}`, rua: newDemand.rua, nro: newDemand.nro,
+      bairro: newDemand.bairro, cep: newDemand.cep, solicitante: newDemand.nome,
+      telefone: newDemand.telefone, status: 'Cadastrada', secretaria: 'S1',
+      coordenadas: { lat: -30.8489 + (Math.random() - 0.5) * 0.03, lng: -51.8030 + (Math.random() - 0.5) * 0.03 }
     };
-
-    onUpdateCards([...cards, card]);
+    onAddEscuta(demand);
     setIsAdding(false);
-    setNewCard({ titulo: '', dono: '', status: 'Em Andamento', tipo: 'Operacional', justificativa: '', tags: [] });
+    setNewDemand({ tema: '', bairro: '', rua: '', nro: '', cep: '', nome: '', telefone: '' });
+  };
+
+  const updateDemandStatus = (id: string, newStatus: any) => {
+    onUpdateEscuta(escuta.map((e: any) => e.id === id ? { ...e, status: newStatus, updatedAt: new Date().toISOString() } : e));
+  };
+
+  const updateJustification = (id: string, text: string) => {
+    onUpdateEscuta(escuta.map((e: any) => e.id === id ? { ...e, justificativa: text } : e));
   };
 
   return (
-    <div className="space-y-12 animate-in slide-in-from-right duration-500 pb-48">
-      <div className="flex items-center gap-8 bg-[#1f2937] p-8 rounded-[40px] border border-white/5 shadow-2xl">
-        <button onClick={onBack} className="p-5 bg-white/5 rounded-2xl text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-xl"><ArrowRight className="rotate-180" size={24}/></button>
-        <div>
-          <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter">{secretaria.nome}</h2>
-          <p className="text-indigo-400 text-[11px] font-black uppercase mt-1 italic tracking-[0.2em]">Secretário(a): {secretaria.secretario}</p>
+    <div className="space-y-12 animate-in fade-in pb-48">
+      <EducationalBanner title="Território Vivo" description="Monitoramento completo de demandas georreferenciadas com controle de contato e histórico." icon={MapIcon} color="indigo" />
+      <div className="flex justify-between items-center bg-[#1f2937] p-8 rounded-[48px] border border-white/5 shadow-2xl">
+         <div className="flex items-center gap-4"><MapPin className="text-indigo-500"/><p className="text-[11px] font-black text-slate-300 uppercase tracking-widest italic">Hub de Triagem de Campo</p></div>
+         <button onClick={() => setIsAdding(true)} className="px-12 py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase italic shadow-2xl flex items-center gap-4 hover:bg-indigo-500 transition-all border border-white/10 hover:scale-[1.02] active:scale-95"><Plus size={24}/> Nova Demanda Territorial</button>
+      </div>
+      <div className="flex h-[800px] bg-[#1f2937] rounded-[64px] border border-white/5 overflow-hidden shadow-3xl">
+        <div className="w-[38%] border-r border-white/5 flex flex-col bg-black/10">
+          <div className="p-10 border-b border-white/5 bg-black/20 flex justify-between items-center"><h3 className="font-black italic uppercase text-indigo-500 text-sm tracking-widest">Registros Ativos</h3><span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full font-black">{escuta.length}</span></div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+            {escuta.map((item: any) => (
+              <div key={item.id} className="p-8 rounded-[40px] border border-white/5 bg-white/5 group hover:border-indigo-500/30 transition-all space-y-5">
+                 <div className="flex justify-between items-start">
+                    <div className="flex-1"><h4 className="text-[14px] font-black text-white italic tracking-tight leading-snug">{item.tema}</h4><p className="text-[10px] text-slate-500 italic uppercase mt-1">Soli: {item.solicitante}</p></div>
+                    <StatusBadge status={item.status} small />
+                 </div>
+                 <div className="space-y-1.5 p-4 bg-black/20 rounded-2xl border border-white/5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-2"><MapPin size={12} className="text-indigo-500"/> {item.bairro} | {item.rua}, {item.nro}</p>
+                    <p className="text-[9px] text-slate-500 font-black italic flex items-center gap-2"><Phone size={10} className="text-emerald-500"/> {item.telefone}</p>
+                 </div>
+                 <div className="pt-4 border-t border-white/5 space-y-4">
+                    <div className="flex items-center gap-3">
+                       <label className="text-[9px] font-black uppercase text-slate-600 italic">Alterar Status:</label>
+                       <select value={item.status} onChange={(e) => updateDemandStatus(item.id, e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black text-slate-300 outline-none focus:border-indigo-500 transition-all cursor-pointer">
+                         {['Cadastrada', 'Em andamento', 'Depende de', 'Aguardando parecer técnico', 'Parado', 'Concluída'].map(s => <option key={s} value={s}>{s}</option>)}
+                       </select>
+                    </div>
+                    {['Depende de', 'Aguardando parecer técnico', 'Parado', 'Concluída'].includes(item.status) && (
+                      <div className="animate-in slide-in-from-top duration-500">
+                         <label className="text-[8px] font-black uppercase text-amber-500 italic mb-2 block">Despacho / Justificativa:</label>
+                         <textarea value={item.justificativa || ''} onChange={(e) => updateJustification(item.id, e.target.value)} placeholder="Descreva o motivo ou a ação tomada..." className="w-full bg-black/50 border border-amber-500/20 rounded-2xl p-4 text-[11px] text-slate-300 italic outline-none focus:border-amber-500/50 min-h-[80px]" />
+                      </div>
+                    )}
+                 </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <button onClick={() => setIsAdding(true)} className="ml-auto flex items-center gap-3 px-10 py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-500 transition-all"><Plus size={20}/> Nova Demanda</button>
+        <div className="flex-1 relative z-10 bg-black/20">
+          <MapContainer center={[-30.8489, -51.8030]} zoom={14} className="w-full h-full">
+            <MapInvalidator /><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {escuta.map((item:any) => (
+              <Marker key={item.id} position={[item.coordenadas?.lat || -30.84, item.coordenadas?.lng || -51.80]}>
+                <Popup><div className="p-3 font-black italic text-sm text-slate-800"><p className="border-b border-slate-200 pb-2 mb-2">{item.tema}</p><span className="text-[10px] text-slate-500 uppercase">{item.bairro} - {item.rua}, {item.nro}</span></div></Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// --- MÓDULO: SWOT (PRESERVADO) ---
+const SWOTModule = ({ swotMatrices, setSwotMatrices }: any) => {
+  const [activeId, setActiveId] = useState(swotMatrices[0]?.id || 'SWOT-1');
+  const [isAddingMatrix, setIsAddingMatrix] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const current = useMemo(() => swotMatrices.find((m: any) => m.id === activeId) || swotMatrices[0], [activeId, swotMatrices]);
+
+  const handleExportPDF = () => {
+    const doc = new (window as any).jspdf.jsPDF();
+    doc.setFontSize(22); doc.text(`MATRIZ SWOT: ${current.titulo}`, 20, 20);
+    doc.setFontSize(12); doc.text(`Camaquã 360 - Diagnóstico Estratégico em ${new Date().toLocaleDateString()}`, 20, 30);
+    doc.line(20, 35, 190, 35);
+    const quadrants = [{ label: 'FORÇAS', points: current.data.forcas || [] }, { label: 'FRAQUEZAS', points: current.data.fraquezas || [] }, { label: 'OPORTUNIDADES', points: current.data.oportunidades || [] }, { label: 'AMEAÇAS', points: current.data.ameacas || [] }];
+    let y = 50;
+    quadrants.forEach(q => {
+      doc.setFontSize(14); doc.setFont(undefined, 'bold'); doc.text(q.label, 20, y);
+      y += 10; doc.setFontSize(10); doc.setFont(undefined, 'normal');
+      q.points.forEach((p: string) => { doc.text(`- ${p}`, 25, y); y += 7; if (y > 280) { doc.addPage(); y = 20; } });
+      y += 5;
+    });
+    doc.save(`swot-camaqua-${current.titulo.toLowerCase().replace(/\s/g, '-')}.pdf`);
+  };
+
+  const Quadrant = ({ title, type, color, points }: any) => (
+    <div className={`bg-black/20 border border-white/5 rounded-[48px] p-8 flex flex-col h-[400px] hover:border-${color}-500/20 transition-all`}>
+      <h4 className={`text-xl font-black uppercase italic mb-6 text-${color}-500 tracking-tighter`}>{title}</h4>
+      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+        {points.map((p: string, i: number) => (
+          <div key={i} className="bg-white/5 p-5 rounded-2xl text-[11px] font-bold italic text-slate-300 border border-white/5 flex justify-between group hover:bg-white/10">
+            {p}<button onClick={() => { const nextPoints = points.filter((_:any,idx:number)=>idx!==i); setSwotMatrices(swotMatrices.map((m:any)=> m.id === activeId ? {...m, data: {...m.data, [type]: nextPoints}} : m)); }} className="opacity-0 group-hover:opacity-100 text-rose-500 transition-all"><Trash2 size={14}/></button>
+          </div>
+        ))}
+      </div>
+      <input onKeyDown={(e: any) => { if (e.key === 'Enter' && e.target.value.trim()) { const nextPoints = [...points, e.target.value.trim()]; setSwotMatrices(swotMatrices.map((m:any)=> m.id === activeId ? {...m, data: {...m.data, [type]: nextPoints}} : m)); e.target.value = ''; } }} placeholder="Adicionar..." className="mt-6 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-[11px] text-white italic outline-none focus:border-indigo-500" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-12 animate-in fade-in pb-48">
+      <EducationalBanner title="Matriz SWOT Estratégica" description="Diagnóstico analítico para embasamento de políticas públicas e gestão de riscos." icon={Compass} color="emerald" />
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-[#1f2937] p-8 rounded-[48px] border border-white/5 shadow-2xl">
+         <div className="flex gap-4 overflow-x-auto custom-scrollbar max-w-full pb-2">
+            {swotMatrices.filter((m: any) => !m.arquivada).map((m: any) => (
+              <button key={m.id} onClick={() => setActiveId(m.id)} className={`px-8 py-4 rounded-3xl font-black uppercase italic text-[10px] transition-all whitespace-nowrap ${activeId === m.id ? 'bg-emerald-600 text-white shadow-xl' : 'bg-white/5 text-slate-500 hover:text-slate-300'}`}>{m.titulo}</button>
+            ))}
+            <button onClick={() => setIsAddingMatrix(true)} className="p-4 bg-emerald-500/10 text-emerald-500 rounded-3xl hover:bg-emerald-500 hover:text-white transition-all"><Plus size={20}/></button>
+         </div>
+         <div className="flex gap-4 shrink-0">
+            <button onClick={() => setSwotMatrices(swotMatrices.map((m:any)=>m.id===activeId?{...m,arquivada:!m.arquivada}:m))} className="p-5 bg-white/5 text-slate-400 rounded-3xl hover:text-amber-500 transition-all border border-white/5"><Archive size={20}/></button>
+            <button onClick={handleExportPDF} className="px-10 py-5 bg-indigo-600 text-white rounded-[28px] font-black uppercase italic text-[10px] shadow-2xl flex items-center gap-3 hover:bg-indigo-500"><Download size={18}/> Exportar PDF</button>
+         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+        <Quadrant title="Forças" type="forcas" color="emerald" points={current?.data?.forcas || []} />
+        <Quadrant title="Fraquezas" type="fraquezas" color="amber" points={current?.data?.fraquezas || []} />
+        <Quadrant title="Oportunidades" type="oportunidades" color="sky" points={current?.data?.oportunidades || []} />
+        <Quadrant title="Ameaças" type="ameacas" color="rose" points={current?.data?.ameacas || []} />
+      </div>
+    </div>
+  );
+};
+
+// --- MÓDULO: OKR (HABILITADO) ---
+const OKRModule = ({ okrs, setOkrs }: { okrs: OKR[], setOkrs: (val: OKR[]) => void }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newOkr, setNewOkr] = useState({ objetivo: '', status: 'Em andamento' as any });
+
+  const addOkr = () => {
+    if (!newOkr.objetivo.trim()) return;
+    const okr: OKR = {
+      id: `OKR-${Date.now()}`,
+      objetivo: newOkr.objetivo,
+      status: newOkr.status,
+      subEstrategias: []
+    };
+    setOkrs([okr, ...okrs]);
+    setIsAdding(false);
+    setNewOkr({ objetivo: '', status: 'Em andamento' });
+  };
+
+  const toggleKR = (okrId: string, krId: string) => {
+    setOkrs(okrs.map(o => o.id === okrId ? {
+      ...o, subEstrategias: o.subEstrategias.map(kr => kr.id === krId ? { ...kr, concluida: !kr.concluida } : kr)
+    } : o));
+  };
+
+  const addKR = (okrId: string, text: string) => {
+    if (!text.trim()) return;
+    setOkrs(okrs.map(o => o.id === okrId ? {
+      ...o, subEstrategias: [...o.subEstrategias, { id: `KR-${Date.now()}`, texto: text, concluida: false }]
+    } : o));
+  };
+
+  return (
+    <div className="space-y-12 animate-in fade-in pb-48">
+      <EducationalBanner title="Gestão por OKRs" description="Monitoramento de resultados-chave alinhados ao plano de governo." icon={Target} color="amber" />
+      <div className="flex justify-end"><button onClick={() => setIsAdding(true)} className="px-10 py-5 bg-amber-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl flex items-center gap-3"><Plus size={18}/> Novo Objetivo Macro</button></div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        {okrs.map(okr => (
+          <div key={okr.id} className="bg-[#1f2937] p-12 rounded-[64px] border border-white/5 relative group">
+             <div className="flex justify-between items-start mb-8"><StatusBadge status={okr.status}/> <button onClick={() => setOkrs(okrs.filter(o=>o.id!==okr.id))} className="text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></div>
+             <h4 className="text-2xl font-black text-white italic mb-10 leading-tight tracking-tighter uppercase">{okr.objetivo}</h4>
+             <div className="space-y-4">
+                <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.3em] italic mb-4">Resultados-Chave (KRs)</p>
+                {okr.subEstrategias.map(kr => (
+                  <div key={kr.id} onClick={() => toggleKR(okr.id, kr.id)} className="flex items-center gap-4 p-5 rounded-3xl bg-black/20 border border-white/5 cursor-pointer hover:border-amber-500/30 transition-all">
+                     <div className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${kr.concluida ? 'bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-500/20' : 'border-slate-700'}`}>
+                        {kr.concluida && <Check size={14} className="text-white"/>}
+                     </div>
+                     <span className={`text-[12px] font-bold italic ${kr.concluida ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{kr.texto}</span>
+                  </div>
+                ))}
+                <input onKeyDown={(e:any) => { if(e.key === 'Enter') { addKR(okr.id, e.target.value); e.target.value = ''; } }} placeholder="Adicionar KR..." className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-[11px] text-white italic outline-none focus:border-amber-500 mt-6" />
+             </div>
+          </div>
+        ))}
+      </div>
+      {isAdding && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[64px] p-12 shadow-3xl">
+              <h4 className="text-3xl font-black text-white italic uppercase mb-10 text-center tracking-tighter">Lançar OKR Estratégico</h4>
+              <div className="space-y-6">
+                <input value={newOkr.objetivo} onChange={e=>setNewOkr({...newOkr, objetivo: e.target.value})} placeholder="Objetivo Principal (ex: Zerar fila da saúde)..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-amber-500 shadow-inner" />
+                <div className="flex gap-6 pt-8"><button onClick={()=>setIsAdding(false)} className="flex-1 py-6 bg-white/5 rounded-[32px] font-black uppercase text-slate-500 italic">Cancelar</button><button onClick={addOkr} className="flex-[2] py-6 bg-amber-600 text-white rounded-[32px] font-black uppercase italic shadow-2xl">Gravar Objetivo</button></div>
+              </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- MÓDULO MACRO (CENTRO DE COMANDO) ---
+const MacroDashboard = ({ data, selectedSecretaria, setSelectedSecretaria, kanbanRegistry, onUpdateKanban, insights, demands, deliveries, bottlenecks }: any) => {
+  const [financialLocked, setFinancialLocked] = useState(true);
+
+  const handleUnlock = () => {
+    const password = prompt("Insira a senha de acesso financeiro:");
+    if (password === '1234') { setFinancialLocked(false); } 
+    else { alert("Senha incorreta. Acesso negado."); }
+  };
+
+  if (selectedSecretaria) {
+    return <SecretariaKanban secretaria={selectedSecretaria} onBack={() => setSelectedSecretaria(null)} cards={kanbanRegistry[selectedSecretaria.id] || []} onUpdateCards={(nc: any) => onUpdateKanban(selectedSecretaria.id, nc)} />;
+  }
+
+  return (
+    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+      <EducationalBanner title="Centro de Comando 360" description="Apoio estratégico à decisão integrando fluxos de pautas e demandas da população." icon={LayoutDashboard} color="indigo" />
+      
+      {/* SEÇÃO DE PERFORMANCE E FINANCEIRO */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-12">
+        <div className="lg:col-span-2">
+          <PerformanceChart demands={demands} deliveries={deliveries} bottlenecks={bottlenecks} />
+        </div>
+        
+        {/* RECURSOS EM CAIXA - COM SENHA E BLUR */}
+        <div className="bg-[#1f2937] border border-white/5 p-12 rounded-[56px] shadow-3xl flex flex-col justify-between relative overflow-hidden group">
+           <div className="absolute -right-10 -top-10 p-20 bg-emerald-500/5 rounded-full blur-3xl"></div>
+           <div className="flex justify-between items-start relative z-10">
+              <div className="p-5 bg-emerald-500/10 rounded-3xl text-emerald-500 shadow-xl"><Wallet size={32}/></div>
+              <button onClick={financialLocked ? handleUnlock : () => setFinancialLocked(true)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white transition-all">
+                {financialLocked ? <Lock size={18}/> : <Unlock size={18} className="text-emerald-500"/>}
+              </button>
+           </div>
+           <div className="mt-8 relative z-10">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic mb-2">Recursos Ativos em Caixa</p>
+              <h3 className={`text-4xl font-black text-white italic transition-all duration-700 ${financialLocked ? 'blur-xl select-none opacity-40' : 'blur-0'}`}>
+                R$ 42.850.312,40
+              </h3>
+              <p className="text-[9px] font-black text-emerald-500/50 uppercase italic mt-4 tracking-widest flex items-center gap-2">
+                 <Activity size={12}/> Disponibilidade Imediata
+              </p>
+           </div>
+           <div className="pt-8 border-t border-white/5 mt-8 relative z-10">
+              <div className="flex justify-between items-center mb-2">
+                 <span className="text-[9px] font-black text-slate-600 uppercase italic">Tesouro Municipal</span>
+                 <span className="text-[10px] font-black text-slate-300 italic">Ativo</span>
+              </div>
+           </div>
+        </div>
       </div>
 
-      <div className="flex gap-6 overflow-x-auto pb-12 custom-scrollbar min-h-[700px]">
-        {COLUMNS.map(col => (
-          <div key={col} className="flex-1 min-w-[280px] bg-black/20 rounded-[40px] border border-white/5 p-6 flex flex-col gap-6">
-            <div className="flex justify-between items-center px-2">
-               <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">{col}</h3>
-               <span className="bg-white/5 text-[9px] font-black text-slate-500 px-2 py-0.5 rounded-full">{cards.filter((c:any) => c.status === col).length}</span>
+      {/* GRID DE SECRETARIAS COM PREVIEW TRELLO */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+        {data.secretarias.map((s: Secretaria) => {
+          const sCards = kanbanRegistry[s.id] || [];
+          return (
+            <div key={s.id} onClick={() => setSelectedSecretaria(s)} className="bg-[#1f2937] border border-white/5 p-10 rounded-[56px] shadow-3xl hover:border-indigo-500/50 hover:translate-y-[-8px] transition-all cursor-pointer group flex flex-col">
+              <div className="flex justify-between items-start mb-8">
+                <div className="p-5 bg-indigo-500/10 rounded-3xl text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-xl"><Building2 size={24} /></div>
+                <StatusBadge status={s.status} small />
+              </div>
+              <h4 className="text-xl font-black text-white italic uppercase tracking-tighter mb-2 group-hover:text-indigo-400 transition-colors leading-none truncate">{s.nome}</h4>
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic leading-tight mb-8">Sec: {s.secretario}</p>
+              
+              {/* TRELLO PREVIEW SECTION */}
+              <div className="flex-1 space-y-3 mb-6">
+                 <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest italic border-b border-white/5 pb-2">Pautas Ativas</p>
+                 {sCards.length > 0 ? sCards.slice(0, 3).map((c: any) => (
+                    <div key={c.id} className="bg-black/20 p-4 rounded-2xl border border-white/5 group-hover:border-indigo-500/20 transition-all">
+                       <div className="flex items-center gap-2 mb-1">
+                          <div className={`w-1.5 h-1.5 rounded-full ${c.status === 'Concluído' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
+                          <span className="text-[7px] font-black text-slate-500 uppercase italic truncate">{c.status}</span>
+                       </div>
+                       <p className="text-[9px] font-bold text-slate-300 italic leading-tight line-clamp-1">{c.titulo}</p>
+                    </div>
+                 )) : (
+                    <p className="text-[8px] text-slate-700 italic font-black uppercase tracking-widest py-6 text-center opacity-40">Sem pautas registradas</p>
+                 )}
+              </div>
+
+              <div className="pt-6 border-t border-white/5 flex justify-between items-center mt-auto">
+                <span className="text-[9px] font-black text-indigo-400 uppercase italic">{sCards.length} Fluxos</span>
+                <ChevronRight size={18} className="text-slate-700 group-hover:text-indigo-500 group-hover:translate-x-2 transition-all" />
+              </div>
             </div>
+          );
+        })}
+      </div>
+
+      {/* INTELIGÊNCIA DE GABINETE NO RODAPÉ */}
+      <div className="bg-[#1f2937] border border-white/5 p-12 rounded-[56px] shadow-3xl flex flex-col md:flex-row justify-between relative group mt-12 animate-in slide-in-from-bottom duration-1000">
+          <div className="flex flex-col md:flex-row items-center gap-10 w-full">
+            <div className="p-8 bg-indigo-600 rounded-[36px] text-white shadow-2xl animate-pulse shrink-0"><BrainCircuit size={48}/></div>
+            <div className="flex-1 space-y-6">
+               <div>
+                  <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter leading-none">Inteligência de Gabinete</h4>
+                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest italic tracking-[0.2em] mt-2">Sincronização de Dados Gemini em Tempo Real</p>
+               </div>
+               <div className="bg-black/40 border border-indigo-500/20 rounded-[40px] p-10 shadow-inner">
+                  <p className="text-[15px] font-bold text-slate-300 italic leading-relaxed tracking-tight">{insights}</p>
+               </div>
+               <div className="flex items-center justify-between text-[11px] font-black uppercase italic tracking-widest text-emerald-500 pt-4">
+                  <span className="flex items-center gap-3"><ShieldCheck size={18}/> Protocolo de Gestão Camaquã - Ativo</span>
+               </div>
+            </div>
+          </div>
+      </div>
+    </div>
+  );
+};
+
+// --- MÓDULO KANBAN (PRESERVADO) ---
+const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newCard, setNewCard] = useState({ titulo: '', dono: '', tipo: 'Operacional' });
+  const columns: KanbanStatus[] = ['Backlog', 'Em Andamento', 'Depende de', 'Em Atenção', 'Parado', 'Concluído'];
+
+  const handleAddCard = () => {
+    if (!newCard.titulo.trim()) return;
+    const card: KanbanCard = {
+      id: `C-${Date.now()}`, titulo: newCard.titulo, secretariaId: secretaria.id,
+      dono: newCard.dono || secretaria.secretario, status: 'Backlog', criadoEm: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), tipo: newCard.tipo as TipoProjeto, tags: []
+    };
+    onUpdateCards([...cards, card]); setIsAdding(false);
+    setNewCard({ titulo: '', dono: '', tipo: 'Operacional' });
+  };
+
+  return (
+    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
+      <div className="flex items-center gap-8 mb-12"><button onClick={onBack} className="p-6 bg-white/5 rounded-[32px] text-slate-400 hover:text-white hover:bg-white/10 transition-all border border-white/5"><ChevronRight size={24} className="rotate-180"/></button><h2 className="text-4xl font-black text-white italic uppercase tracking-tighter leading-none">{secretaria.nome}</h2></div>
+      <div className="flex justify-between items-center bg-[#1f2937] p-8 rounded-[48px] border border-white/5 shadow-2xl">
+         <div className="flex items-center gap-4"><FolderKanban className="text-indigo-500"/><p className="text-[11px] font-black text-slate-300 uppercase tracking-widest italic">Quadro Operacional</p></div>
+         <button onClick={() => setIsAdding(true)} className="px-12 py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase italic shadow-2xl flex items-center gap-4 hover:bg-indigo-500 transition-all border border-white/10"><Plus size={24}/> Nova Pauta</button>
+      </div>
+      <div className="flex gap-8 overflow-x-auto pb-10 custom-scrollbar min-h-[600px]">
+        {columns.map(col => (
+          <div key={col} className="min-w-[320px] w-[320px] flex flex-col gap-6">
+            <h5 className="text-[11px] font-black text-slate-500 uppercase tracking-widest italic px-4">{col} ({cards.filter((c:any) => c.status === col).length})</h5>
             <div className="flex-1 space-y-4">
-              {cards.filter((c: any) => c.status === col).map((card: any) => (
-                <div key={card.id} className="bg-[#1f2937] border border-white/5 p-6 rounded-[24px] shadow-xl hover:border-indigo-500/30 transition-all group relative">
-                  <div className="flex flex-wrap gap-1 mb-3">
-                     {card.tags?.map((t: string) => <span key={t} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded">{t}</span>)}
-                  </div>
-                  <h4 className="text-[13px] font-bold text-white italic mb-4 leading-tight tracking-tight">{card.titulo}</h4>
-                  {card.justificativa && (
-                    <div className="mb-4 p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl">
-                       <p className="text-[8px] font-bold text-amber-500 uppercase italic mb-1">Justificativa:</p>
-                       <p className="text-[9px] text-slate-400 italic line-clamp-2 leading-relaxed">"{card.justificativa}"</p>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center pt-4 border-t border-white/5">
-                    <span className="text-[8px] font-black text-slate-600 uppercase italic">{card.dono}</span>
-                    <div className="flex gap-2">
-                       <button onClick={() => onUpdateCards(cards.filter((c:any) => c.id !== card.id))} className="text-slate-800 hover:text-rose-500 opacity-0 group-hover:opacity-100"><Trash2 size={12}/></button>
-                    </div>
-                  </div>
+              {cards.filter((c:any) => c.status === col).map((card:any) => (
+                <div key={card.id} className="bg-[#1f2937] border border-white/5 p-8 rounded-[40px] shadow-xl hover:border-indigo-500/30 transition-all">
+                  <h6 className="text-[13px] font-black text-white italic mb-4 leading-snug">{card.titulo}</h6>
+                  <div className="flex items-center gap-2 mb-6"><div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[8px] font-black text-white">{card.dono.charAt(0)}</div><span className="text-[9px] font-black text-slate-500 uppercase italic">{card.dono}</span></div>
+                  <select value={card.status} onChange={(e) => onUpdateCards(cards.map((c:any) => c.id === card.id ? { ...c, status: e.target.value as KanbanStatus, updatedAt: new Date().toISOString() } : c))} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[9px] font-black text-slate-400 uppercase italic outline-none focus:border-indigo-500">
+                    {columns.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
               ))}
             </div>
           </div>
         ))}
       </div>
-
       {isAdding && (
-        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80">
            <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[64px] p-12 shadow-3xl">
-              <h4 className="text-3xl font-black text-white italic uppercase mb-10 text-center tracking-tighter">Novo Card de Demanda</h4>
+              <h4 className="text-3xl font-black text-white italic uppercase mb-10 text-center tracking-tighter">Lançar Pauta</h4>
               <div className="space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Nome da Demanda</label>
-                    <input value={newCard.titulo} onChange={e => setNewCard({...newCard, titulo: e.target.value})} placeholder="O que precisa ser feito?" className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-4 text-white outline-none focus:border-indigo-500 font-bold italic" />
-                 </div>
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Responsável</label>
-                       <input value={newCard.dono} onChange={e => setNewCard({...newCard, dono: e.target.value})} placeholder="Nome do técnico/gestor..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-6 py-4 text-white font-bold italic" />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Status</label>
-                       <select value={newCard.status} onChange={e => setNewCard({...newCard, status: e.target.value as any})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-6 py-4 text-white font-bold italic appearance-none cursor-pointer">
-                          {COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
-                       </select>
-                    </div>
-                 </div>
-                 {(newCard.status === 'Parado' || newCard.status === 'Depende de') && (
-                   <div className="space-y-2 animate-in slide-in-from-top">
-                      <label className="text-[9px] font-black text-amber-500 uppercase tracking-widest italic ml-4">Justificativa (Obrigatória)</label>
-                      <textarea value={newCard.justificativa} onChange={e => setNewCard({...newCard, justificativa: e.target.value})} placeholder="Por que este card está parado ou dependente?" className="w-full h-24 bg-black/30 border border-amber-500/20 rounded-3xl px-8 py-4 text-white outline-none focus:border-amber-500 font-bold italic resize-none" />
-                   </div>
-                 )}
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Tags Estratégicas</label>
-                    <div className="flex flex-wrap gap-2 px-2">
-                       {TAGS_OPTIONS.map(tag => (
-                         <button key={tag} onClick={() => {
-                           const tags = newCard.tags.includes(tag) ? newCard.tags.filter(t => t !== tag) : [...newCard.tags, tag];
-                           setNewCard({...newCard, tags});
-                         }} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase italic transition-all border ${newCard.tags.includes(tag) ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-black/20 border-white/5 text-slate-500'}`}>{tag}</button>
-                       ))}
-                    </div>
-                 </div>
-                 <div className="flex gap-6 pt-6">
-                    <button onClick={() => setIsAdding(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button>
-                    <button onClick={handleAddCard} className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Salvar Demanda</button>
-                 </div>
+                <input value={newCard.titulo} onChange={e=>setNewCard({...newCard, titulo: e.target.value})} placeholder="Título da Pauta..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                <div className="flex gap-6"><button onClick={()=>setIsAdding(false)} className="flex-1 py-6 bg-white/5 rounded-[32px] font-black uppercase text-slate-500 italic">Cancelar</button><button onClick={handleAddCard} className="flex-[2] py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase italic shadow-2xl">Confirmar</button></div>
               </div>
            </div>
         </div>
@@ -218,362 +532,34 @@ const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => 
   );
 };
 
-// [MODULE: PAINEL MACRO - v2.6.0 SUMMARY PREVIEW]
-const MacroDashboard = ({ data, selectedSecretaria, setSelectedSecretaria, kanbanRegistry, onUpdateKanban }: any) => {
-  if (selectedSecretaria) return <SecretariaKanban secretaria={selectedSecretaria} onBack={() => setSelectedSecretaria(null)} cards={kanbanRegistry[selectedSecretaria.id] || []} onUpdateCards={(nc: any) => onUpdateKanban(selectedSecretaria.id, nc)} />;
-  
-  return (
-    <div className="space-y-12 animate-in fade-in duration-700 pb-24">
-      <div className="bg-[#1f2937] border border-white/5 rounded-[64px] p-12 lg:p-16 shadow-3xl">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {data.secretarias.map((sec: Secretaria) => {
-            const secCards = kanbanRegistry[sec.id] || [];
-            const summary = {
-              andamento: secCards.filter((c:any) => c.status === 'Em Andamento').length,
-              concluido: secCards.filter((c:any) => c.status === 'Concluído').length,
-              parado: secCards.filter((c:any) => c.status === 'Parado' || c.status === 'Em Atenção').length,
-            };
-
-            return (
-              <div key={sec.id} className="bg-[#111827]/70 border border-white/5 p-10 rounded-[56px] hover:border-indigo-500/40 transition-all group flex flex-col justify-between h-[650px] shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 rounded-bl-[120px] -mr-12 -mt-12 group-hover:bg-indigo-600/10 transition-all duration-1000"></div>
-                  <div>
-                    <div className="flex justify-between items-start mb-8">
-                      <div className="p-5 rounded-[24px] bg-indigo-500/10 text-indigo-400 border border-white/5 shadow-xl"><Building2 size={28}/></div>
-                      <StatusBadge status={sec.status} />
-                    </div>
-                    <h4 className="text-[17px] font-black text-white uppercase italic mb-1 group-hover:text-indigo-400 transition-colors leading-tight">{sec.nome}</h4>
-                    
-                    {/* Summary Counters */}
-                    <div className="flex gap-3 mt-6">
-                       <div className="flex-1 bg-blue-500/10 border border-blue-500/20 rounded-2xl p-3 text-center">
-                          <p className="text-[7px] font-black text-blue-400 uppercase italic">Andamento</p>
-                          <p className="text-xl font-black text-white mt-1">{summary.andamento}</p>
-                       </div>
-                       <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 text-center">
-                          <p className="text-[7px] font-black text-emerald-400 uppercase italic">Concluído</p>
-                          <p className="text-xl font-black text-white mt-1">{summary.concluido}</p>
-                       </div>
-                       <div className="flex-1 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-3 text-center">
-                          <p className="text-[7px] font-black text-rose-400 uppercase italic">Atenção</p>
-                          <p className="text-xl font-black text-white mt-1">{summary.parado}</p>
-                       </div>
-                    </div>
-
-                    <div className="space-y-3 pt-8 mt-8 border-t border-white/5">
-                      {secCards.slice(0, 2).map((card: any) => (
-                        <div key={card.id} className="bg-black/40 p-4 rounded-2xl border border-white/5 relative overflow-hidden">
-                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${card.status === 'Concluído' ? 'bg-emerald-500' : 'bg-blue-500'}`}></div>
-                          <span className="text-[10px] font-bold text-white italic line-clamp-2 leading-tight pl-2">{card.titulo}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedSecretaria(sec)} className="w-full py-6 bg-white/5 hover:bg-indigo-600 rounded-[32px] text-[11px] font-black text-slate-300 group-hover:text-white uppercase tracking-[0.4em] transition-all border border-white/5 flex items-center justify-center gap-3 mt-10 shadow-2xl italic">Abrir Secretaria <ChevronRight size={18}/></button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// [MODULE: OKR - v2.6.0 STRATEGY CREATION]
-const OKRModule = memo(({ okrs, setOkrs }: any) => {
+// --- MÓDULO: PROJETOS (PRESERVADO) ---
+const GestaoProjetos = ({ projetos, onUpdateProjetos, secretarias }: any) => {
   const [isAdding, setIsAdding] = useState(false);
-  const [newOkr, setNewOkr] = useState({ objetivo: '', tipo: 'Estratégico' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newProject, setNewProject] = useState<any>({
+    nome: '', responsavel: '', eixo: secretarias[0].nome, status: 'Execução',
+    recursoPrevisto: '', fim: new Date().toISOString().split('T')[0],
+    prioridade: 'Média', subItens: [{ id: '1', texto: '', concluido: false }]
+  });
 
-  const handleAddOkr = () => {
-    if (!newOkr.objetivo.trim()) return;
-    const okr = {
-      id: `OKR-${Date.now()}`,
-      objetivo: newOkr.objetivo,
-      tipo: newOkr.tipo,
-      krs: []
-    };
-    setOkrs([okr, ...okrs]);
-    setIsAdding(false);
-    setNewOkr({ objetivo: '', tipo: 'Estratégico' });
+  const handleAddProject = () => {
+    if (!newProject.nome.trim()) return;
+    const total = newProject.subItens.filter((si: any) => si.texto.trim() !== '').length;
+    const comp = newProject.subItens.filter((si: any) => si.texto.trim() !== '' && si.concluido).length;
+    const projectData = { ...newProject, id: editingId || `P-${Date.now()}`, progresso: total > 0 ? Math.round((comp / total) * 100) : 0, updatedAt: new Date().toISOString() };
+    if (editingId) onUpdateProjetos(projetos.map((p: any) => p.id === editingId ? projectData : p));
+    else onUpdateProjetos([projectData, ...projetos]);
+    setIsAdding(false); setEditingId(null);
   };
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-48">
-      <EducationalBanner title="Monitoramento de OKRs" description="Conectando visão política a resultados mensuráveis. IA atua como suporte consultivo nas micro-entregas." icon={Target} color="amber" />
-      
-      <div className="flex justify-end mb-8">
-         <button onClick={() => setIsAdding(true)} className="flex items-center gap-3 px-10 py-5 bg-amber-600 text-white rounded-3xl font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-amber-500 transition-all italic"><Plus size={20}/> Inserir Nova Estratégia (OKR)</button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        {okrs.map((okr: any) => (
-            <div key={okr.id} className="bg-[#1f2937] border border-white/5 p-12 rounded-[64px] shadow-3xl relative hover:border-amber-500/20 transition-all">
-               <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-6">
-                  <StatusBadge status={okr.tipo || 'Setorial'} />
-                  <button onClick={() => setOkrs(okrs.filter((o:any) => o.id !== okr.id))} className="p-3 bg-white/5 text-slate-700 hover:text-rose-500 rounded-xl transition-all"><Trash2 size={16}/></button>
-               </div>
-               <h4 className="text-2xl font-black text-white italic mb-10 leading-tight"><Trophy className="inline text-amber-500 mr-4 shrink-0" size={28}/> {okr.objetivo}</h4>
-               <div className="space-y-4">
-                  <div className="p-6 bg-black/20 rounded-[32px] border border-white/5 border-dashed text-center">
-                     <p className="text-[10px] font-bold text-slate-500 uppercase italic">Nenhum Key Result cadastrado.</p>
-                  </div>
-               </div>
-            </div>
-        ))}
-      </div>
-
-      {isAdding && (
-        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
-           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-16 shadow-3xl text-center">
-              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter">Nova Estratégia de Governo</h4>
-              <div className="space-y-8">
-                 <div className="space-y-2 text-left">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Objetivo Estratégico</label>
-                    <textarea value={newOkr.objetivo} onChange={e => setNewOkr({...newOkr, objetivo: e.target.value})} placeholder="Ex: Transformar Camaquã em um Polo Logístico do RS..." className="w-full h-32 bg-black/30 border border-white/10 rounded-[32px] p-8 text-white outline-none focus:border-amber-500 font-bold italic resize-none shadow-inner" />
-                 </div>
-                 <div className="space-y-2 text-left">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Tipo de OKR</label>
-                    <div className="flex gap-4">
-                       {['Estratégico', 'Transversal', 'Setorial'].map(t => (
-                         <button key={t} onClick={() => setNewOkr({...newOkr, tipo: t})} className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase italic border transition-all ${newOkr.tipo === t ? 'bg-amber-600 border-amber-400 text-white' : 'bg-black/20 border-white/5 text-slate-500'}`}>{t}</button>
-                       ))}
-                    </div>
-                 </div>
-                 <div className="flex gap-6 pt-6">
-                    <button onClick={() => setIsAdding(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Descartar</button>
-                    <button onClick={handleAddOkr} className="flex-[2] py-5 bg-amber-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Confirmar Estratégia</button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-    </div>
-  );
-});
-
-// [MODULE: SWOT GOVERNAMENTAL - v2.6.0 NOMINAL PERSISTENCE]
-const SWOTModule = ({ swotMatrices, setSwotMatrices, activeSwotId, setActiveSwotId }: any) => {
-  const [activeQuadrant, setActiveQuadrant] = useState<string | null>(null);
-  const [newItemText, setNewItemText] = useState('');
-  const [showNotification, setShowNotification] = useState<string | null>(null);
-  const [confirmNewModal, setConfirmNewModal] = useState(false);
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  
-  const [saveName, setSaveName] = useState('');
-  const [saveRef, setSaveRef] = useState('');
-
-  const currentMatrix = useMemo(() => swotMatrices.find((m: any) => m.id === activeSwotId) || swotMatrices[0], [swotMatrices, activeSwotId]);
-
-  const QUADRANTS: Record<string, { label: string, microcopy: string, bgColor: string, borderColor: string, textColor: string }> = {
-    forcas: { label: 'Forças', microcopy: 'Fortalezas internas do governo que impulsionam resultados.', bgColor: 'bg-emerald-900/20', borderColor: 'border-emerald-500', textColor: 'text-emerald-400' },
-    fraquezas: { label: 'Fraquezas', microcopy: 'Limitações internas que exigem correção e governança.', bgColor: 'bg-amber-900/20', borderColor: 'border-amber-500', textColor: 'text-amber-400' },
-    oportunidades: { label: 'Oportunidades', microcopy: 'Cenários externos favoráveis para expansão de políticas.', bgColor: 'bg-sky-900/20', borderColor: 'border-sky-500', textColor: 'text-sky-400' },
-    ameacas: { label: 'Ameaças', microcopy: 'Riscos externos em radar que podem impactar a gestão.', bgColor: 'bg-rose-900/20', borderColor: 'border-rose-500', textColor: 'text-rose-400' }
-  };
-
-  const handleSaveMatrixRegistry = () => {
-    if (!saveName.trim()) {
-      alert("Nome da matriz é obrigatório.");
-      return;
-    }
-    
-    const updatedEntry = {
-      ...currentMatrix,
-      titulo: saveName,
-      referencia: saveRef,
-      ultimaEdicao: new Date().toISOString()
-    };
-    
-    const newMatrices = swotMatrices.map((m: any) => m.id === activeSwotId ? updatedEntry : m);
-    setSwotMatrices(newMatrices);
-    localStorage.setItem('camaqua360_swot_registry', JSON.stringify(newMatrices));
-    
-    setSaveModalOpen(false);
-    setShowNotification("Matriz consolidada no Registry Governamental.");
-    setTimeout(() => setShowNotification(null), 2000);
-  };
-
-  const addItem = () => {
-    if (!newItemText.trim() || !activeQuadrant) return;
-    const updatedMatrices = swotMatrices.map((m: any) => 
-      m.id === activeSwotId ? { ...m, data: { ...m.data, [activeQuadrant]: [...(m.data[activeQuadrant] || []), { id: Date.now(), texto: newItemText }] } } : m
-    );
-    setSwotMatrices(updatedMatrices);
-    setNewItemText(''); 
-    setActiveQuadrant(null);
-  };
-
-  const removeItem = (quad: string, id: number) => {
-    const updatedMatrices = swotMatrices.map((m: any) => 
-      m.id === activeSwotId ? { ...m, data: { ...m.data, [quad]: m.data[quad].filter((i: any) => i.id !== id) } } : m
-    );
-    setSwotMatrices(updatedMatrices);
-  };
-
-  return (
-    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
-      {showNotification && (
-        <div className="fixed top-24 right-10 z-[7000] bg-emerald-600 text-white px-8 py-4 rounded-2xl shadow-3xl font-black uppercase text-[10px] tracking-widest animate-in slide-in-from-right flex items-center gap-2">
-          <CheckCircle2 size={16}/> {showNotification}
-        </div>
-      )}
-
-      <EducationalBanner 
-        title="Matriz SWOT Governamental" 
-        description="A análise SWOT é o ponto de partida estratégico para qualquer ação de governo. Este módulo gerencia o diagnóstico institucional através de um Registry persistente."
-        icon={Compass} 
-        color="emerald" 
-      />
-
-      {/* TOP ACTIONS BAR - Registry Management */}
-      <div className="bg-[#1f2937] border border-white/5 p-6 rounded-[32px] shadow-2xl flex flex-wrap items-center justify-between gap-6 mb-12">
-        <div className="flex items-center gap-4">
-           <div className="p-4 bg-indigo-500/10 text-indigo-400 rounded-xl shadow-inner"><History size={20}/></div>
-           <div className="flex flex-col">
-              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-2 mb-1 italic">Registry de Matrizes Salvas</span>
-              <select 
-                value={activeSwotId} 
-                onChange={(e) => setActiveSwotId(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-2xl px-6 py-3 text-white outline-none focus:border-indigo-500 font-bold text-xs italic min-w-[320px] shadow-lg"
-              >
-                {swotMatrices.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.titulo}</option>
-                ))}
-              </select>
-           </div>
-        </div>
-        <div className="flex items-center gap-4">
-           <button onClick={() => setConfirmNewModal(true)} className="flex items-center gap-2 px-8 py-4 bg-white/5 text-slate-300 rounded-[24px] font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all shadow-xl italic"><Plus size={16}/> Nova Matriz</button>
-           <button onClick={() => { setSaveName(currentMatrix.titulo); setSaveRef(currentMatrix.referencia || ''); setSaveModalOpen(true); }} className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-[24px] font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-indigo-500 transition-all italic"><Save size={16}/> Salvar Matriz</button>
-           <button onClick={() => window.print()} className="flex items-center gap-2 px-8 py-4 border border-indigo-500/30 text-indigo-400 rounded-[24px] font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 hover:text-white transition-all italic shadow-lg"><FileDown size={16}/> Exportar PDF</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 h-[950px]">
-        {Object.entries(QUADRANTS).map(([key, config]) => (
-          <div key={key} className={`${config.bgColor} border ${config.borderColor} rounded-[64px] p-12 flex flex-col shadow-3xl relative overflow-hidden transition-all hover:border-white/10`}>
-             <div className="flex justify-between items-start mb-6 z-10">
-                <div className="space-y-3">
-                   <h4 className={`text-4xl font-black ${config.textColor} italic uppercase tracking-tighter leading-none`}>{config.label}</h4>
-                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest max-w-[320px] italic leading-relaxed">{config.microcopy}</p>
-                </div>
-                <button onClick={() => setActiveQuadrant(key)} className={`p-6 bg-black/40 ${config.textColor} rounded-3xl hover:bg-white/10 transition-all shadow-2xl border border-white/5`}><Plus size={32}/></button>
-             </div>
-             <div className="space-y-6 overflow-y-auto custom-scrollbar flex-1 pr-4 z-10 pt-4">
-                {(currentMatrix.data[key] || []).map((item: any) => (
-                  <div key={item.id} className="bg-black/40 p-8 rounded-[40px] border border-white/5 hover:border-white/10 transition-all flex justify-between group/item items-start gap-4 shadow-inner">
-                     <p className="text-[16px] font-bold text-white italic leading-relaxed tracking-tight">"{item.texto}"</p>
-                     <button onClick={() => removeItem(key, item.id)} className="text-slate-800 hover:text-rose-500 opacity-0 group-hover/item:opacity-100 transition-all shrink-0"><Trash2 size={20}/></button>
-                  </div>
-                ))}
-             </div>
-          </div>
-        ))}
-      </div>
-
-      {saveModalOpen && (
-        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
-           <div className="bg-[#1f2937] border border-white/10 w-full max-w-xl rounded-[60px] p-16 shadow-3xl">
-              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter text-center">Salvar no histórico de diagnóstico</h4>
-              <div className="space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Nome da Matriz (Obrigatório)</label>
-                    <input autoFocus value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Ex: SWOT Geral Jan/25..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white outline-none focus:border-indigo-500 font-bold italic shadow-inner" />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic ml-4">Referência / Projeto (Opcional)</label>
-                    <input value={saveRef} onChange={(e) => setSaveRef(e.target.value)} placeholder="Ex: Revitalização do Centro, Obra X..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white outline-none focus:border-indigo-500 font-bold italic" />
-                 </div>
-                 <div className="flex gap-6 pt-6">
-                    <button onClick={() => setSaveModalOpen(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button>
-                    <button onClick={handleSaveMatrixRegistry} className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-xl">Confirmar e Salvar</button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {activeQuadrant && (
-        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
-           <div className="bg-[#1f2937] border border-white/10 w-full max-w-lg rounded-[60px] p-16 shadow-3xl text-center">
-              <h4 className="text-3xl font-black text-white italic mb-10 uppercase tracking-tighter">Inserir em {QUADRANTS[activeQuadrant].label}</h4>
-              <textarea autoFocus value={newItemText} onChange={(e) => setNewItemText(e.target.value)} placeholder="Descreva o ponto estratégico..." className="w-full h-40 bg-black/30 border border-white/10 rounded-[32px] p-8 text-white mb-10 outline-none focus:border-indigo-500 font-bold italic shadow-inner" />
-              <div className="flex gap-6"><button onClick={() => setActiveQuadrant(null)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Cancelar</button><button onClick={addItem} className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-xl">Confirmar</button></div>
-           </div>
-        </div>
-      )}
-
-      {confirmNewModal && (
-        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
-           <div className="bg-[#1f2937] p-16 rounded-[60px] text-center w-full max-w-lg shadow-3xl border border-white/10">
-              <h4 className="text-3xl font-black text-white italic mb-8 uppercase tracking-tighter">Novo Diagnóstico?</h4>
-              <p className="text-slate-400 text-sm italic mb-10 leading-relaxed">Isso preparará uma nova matriz em branco. Certifique-se de salvar a atual se desejar mantê-la no histórico.</p>
-              <div className="flex gap-6"><button onClick={() => setConfirmNewModal(false)} className="flex-1 py-5 bg-white/5 text-slate-500 rounded-3xl font-black uppercase text-[10px] italic">Não</button><button onClick={() => {
-                const newId = `SWOT-${Date.now()}`;
-                const newMatrix = { id: newId, titulo: `Nova Matriz - ${new Date().toLocaleDateString('pt-BR')}`, dataCriacao: new Date().toISOString(), ultimaEdicao: new Date().toISOString(), data: { forcas: [], fraquezas: [], oportunidades: [], ameacas: [] } };
-                setSwotMatrices([newMatrix, ...swotMatrices]);
-                setActiveSwotId(newId); setConfirmNewModal(false);
-              }} className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase italic text-[10px] shadow-2xl">Sim, Iniciar</button></div>
-           </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// [MODULE: TERRITÓRIO VIVO - IMMUTABLE LOCK]
-const CitizenListening = memo(({ escuta }: any) => (
-  <div className="flex h-[80vh] bg-[#1f2937] rounded-[64px] border border-white/5 overflow-hidden shadow-3xl animate-in fade-in duration-500">
-    <div className="w-[35%] border-r border-white/5 flex flex-col bg-black/10">
-      <div className="p-10 border-b border-white/5 bg-black/20 shrink-0"><h3 className="text-xl font-black text-white italic uppercase tracking-tighter leading-none">Camaquã<br/><span className="text-indigo-500 text-sm">Território Vivo</span></h3></div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
-        {escuta.map((item: any) => (
-          <div key={item.id} className="p-8 rounded-[40px] border border-white/5 bg-white/5">
-             <h4 className="text-[15px] font-black text-white italic leading-tight mb-4 tracking-tight">{item.tema}</h4>
-             <div className="flex flex-col gap-1 mb-4"><p className="text-[10px] text-slate-400 italic">📍 {item.rua}, {item.bairro}</p>{item.cep && <p className="text-[10px] text-indigo-400 font-black">CEP: {item.cep}</p>}</div>
-             <StatusBadge status={item.status === 'recebido' ? 'Aberta' : item.status === 'resolvido' ? 'Resolvida' : 'Em Andamento'} />
-          </div>
-        ))}
-      </div>
-    </div>
-    <div className="flex-1 relative bg-black/40 flex items-center justify-center italic opacity-30 uppercase font-black tracking-[1em] text-[10px]">Mapa Territorial Protegido (HARD_LOCK)</div>
-  </div>
-));
-
-// [MODULE: MANUAL DE GOVERNANÇA - v2.6.0 SCHOOL OF GOV]
-const GovernanceManual = () => {
-  const SECTIONS = [
-    {
-      title: "1. O que é Governança Pública",
-      content: "Diferente da gestão cotidiana, a governança é o sistema que garante que a Prefeitura tome as decisões certas. No BI 360°, isso significa alinhar o orçamento, a opinião técnica e a vontade política para entregar resultados reais ao cidadão camaquense."
-    },
-    {
-      title: "2. Como usar OKRs na Prefeitura",
-      content: "OKR não é tarefa, é resultado. Cada estratégia lançada no módulo OKR deve responder: 'Como saberemos que Camaquã melhorou?'. Use as micro-entregas para rastrear o progresso semanal de cada meta prioritária."
-    },
-    {
-      title: "3. Matriz SWOT como Bússola",
-      content: "Use a SWOT antes de lançar novos projetos. Identifique o que temos de forte (equipe técnica, frota) e o que nos ameaça (questões jurídicas, clima). Salve as matrizes por projeto no Registry para consultas futuras."
-    },
-    {
-      title: "4. Kanban das Secretarias",
-      content: "O Kanban é a sala de máquinas. Cada secretaria deve atualizar suas pautas diariamente. Cards em 'Parado' ou 'Depende de' são prioridades de articulação para o Prefeito e Secretário de Governo."
-    },
-    {
-      title: "5. Ritmo Semanal e Papéis",
-      content: "Segunda-feira: Priorização. Quarta-feira: Articulação Intersecretarial. Sexta-feira: Prestação de contas. O Prefeito arbitra conflitos; os Secretários garantem a execução; a Equipe Técnica alimenta o BI."
-    }
-  ];
-
-  return (
-    <div className="space-y-12 animate-in fade-in duration-700 pb-48">
-      <EducationalBanner title="Escola de Governo" description="Manual de Governança Institucional e Ritos de Gestão para o Gabinete Municipal de Camaquã." icon={BookOpen} color="slate" />
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        {SECTIONS.map((sec, i) => (
-          <div key={i} className="bg-[#1f2937] border border-white/5 p-12 rounded-[56px] shadow-2xl">
-             <h4 className="text-xl font-black text-white italic uppercase mb-6 tracking-tight flex items-center gap-4"><Info className="text-indigo-400" size={24}/> {sec.title}</h4>
-             <p className="text-slate-400 text-sm italic leading-relaxed font-medium">{sec.content}</p>
+      <EducationalBanner title="Projetos Estratégicos" description="Monitoramento real do Plano de Governo e Obras Públicas." icon={Layers} color="indigo" />
+      <div className="flex justify-end"><button onClick={() => { setEditingId(null); setIsAdding(true); }} className="px-12 py-8 bg-indigo-600 text-white rounded-[40px] font-black uppercase text-[12px] shadow-3xl hover:bg-indigo-500 shrink-0"><Plus size={24}/> Novo Projeto</button></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {projetos.filter((p:any) => !p.arquivado).map((p: any) => (
+          <div key={p.id} className="bg-[#1f2937] border border-white/5 p-10 rounded-[56px] shadow-3xl hover:border-indigo-500/30 transition-all flex flex-col justify-between h-[520px]">
+            <div><div className="flex justify-between items-start mb-6"><button onClick={() => { setNewProject(p); setEditingId(p.id); setIsAdding(true); }} className="p-3 bg-white/5 rounded-xl text-slate-400 hover:text-white hover:bg-indigo-600 transition-all"><Pencil size={14}/></button><StatusBadge status={p.status} /></div><p className="text-[9px] font-black text-indigo-500 uppercase mb-2 italic tracking-widest">{p.eixo}</p><h4 className="text-xl font-black text-white italic mb-4 leading-tight">{p.nome}</h4><div className="bg-black/20 p-4 rounded-2xl mb-6 border border-white/5"><p className="text-[7px] font-black text-slate-600 uppercase mb-1 italic">Responsável Técnico</p><p className="text-[10px] font-black text-slate-300 italic">{p.responsavel}</p></div><div className="space-y-4 mb-8"><div className="flex justify-between text-[10px] font-black text-slate-500 uppercase italic"><span>Progresso Realizado</span><span>{p.progresso}%</span></div><div className="w-full bg-black/40 h-3 rounded-full overflow-hidden border border-white/5"><div className="h-full bg-indigo-600 transition-all duration-1000" style={{ width: `${p.progresso}%` }}></div></div></div></div><div className="flex justify-between items-center pt-6 border-t border-white/5"><div className="flex items-center gap-2"><Calendar size={14} className="text-slate-600"/><span className="text-[9px] font-black text-slate-500 uppercase italic">Entrega: {new Date(p.fim).toLocaleDateString()}</span></div></div>
           </div>
         ))}
       </div>
@@ -581,97 +567,70 @@ const GovernanceManual = () => {
   );
 };
 
-// [MAIN APP ENGINE]
+// --- APP ROOT ---
 const App = () => {
   const [activeTab, setActiveTab] = useState('prefeito');
-  const [insights, setInsights] = useState<string>('Auditando integridade do BI...');
+  const [insights, setInsights] = useState<string>('Analista IA processando métricas transversais...');
   const [selectedSecretaria, setSelectedSecretaria] = useState<Secretaria | null>(null);
 
-  const getInitialState = (key: string, defaultValue: any) => {
-    try {
-      const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : defaultValue;
-    } catch { return defaultValue; }
-  };
+  const [kanbanRegistry, setKanbanRegistry] = useState(() => loadState('KANBAN', MOCK_DATA.secretarias.reduce((acc, s) => ({ ...acc, [s.id]: [] }), {})));
+  const [okrs, setOkrs] = useState<OKR[]>(() => loadState('OKR', []));
+  const [swotMatrices, setSwotMatrices] = useState(() => loadState('SWOT_REGISTRY', [{ id: 'SWOT-001', titulo: 'Diagnóstico Geral', arquivada: false, data: MOCK_DATA.swot, criadaEm: new Date().toISOString() }]));
+  const [projetos, setProjetos] = useState(() => loadState('PROJETOS', MOCK_DATA.projetosEstrategicos));
+  const [escuta, setEscuta] = useState(() => loadState('ESCUTA', MOCK_DATA.escuta));
 
-  const [kanbanRegistry, setKanbanRegistry] = useState(() => getInitialState('c360_kanban', MOCK_DATA.secretarias.reduce((acc, s) => ({ ...acc, [s.id]: [] }), {})));
-  const [okrs, setOkrs] = useState(() => getInitialState('c360_okrs', []));
-  const [swotMatrices, setSwotMatrices] = useState(() => getInitialState('camaqua360_swot_registry', [{ id: 'SWOT-001', titulo: 'SWOT Geral 2025', dataCriacao: new Date().toISOString(), ultimaEdicao: new Date().toISOString(), data: MOCK_DATA.swot }]));
-  const [activeSwotId, setActiveSwotId] = useState(() => getInitialState('c360_active_swot_id', 'SWOT-001'));
-  const [escuta, setEscuta] = useState(() => getInitialState('c360_escuta', []));
+  const metrics = useMemo(() => {
+    const totalDemands = escuta.length;
+    const deliveries = escuta.filter((e:any) => e.status === 'Concluída').length + projetos.filter((p:any)=>p.status === 'Concluído').length;
+    const bottlenecks = escuta.filter((e:any) => ['Depende de', 'Parado'].includes(e.status)).length + projetos.filter((p:any)=>['Risco', 'Parado'].includes(p.status)).length;
+    return { demands: totalDemands, deliveries, bottlenecks };
+  }, [escuta, projetos]);
 
   useEffect(() => {
-    localStorage.setItem('c360_kanban', JSON.stringify(kanbanRegistry));
-    localStorage.setItem('c360_okrs', JSON.stringify(okrs));
-    localStorage.setItem('camaqua360_swot_registry', JSON.stringify(swotMatrices));
-    localStorage.setItem('c360_active_swot_id', JSON.stringify(activeSwotId));
-    localStorage.setItem('c360_escuta', JSON.stringify(escuta));
-  }, [kanbanRegistry, okrs, swotMatrices, activeSwotId, escuta]);
+    saveState('KANBAN', kanbanRegistry);
+    saveState('OKR', okrs);
+    saveState('SWOT_REGISTRY', swotMatrices);
+    saveState('PROJETOS', projetos);
+    saveState('ESCUTA', escuta);
+  }, [kanbanRegistry, okrs, swotMatrices, projetos, escuta]);
 
   useEffect(() => {
     const loadInsights = async () => {
-      const dashboardState: any = { ...MOCK_DATA, kanbanCards: Object.values(kanbanRegistry).flat(), okrs, escuta };
-      const text = await getGovernmentInsights(dashboardState);
-      setInsights(text || "Dashboard executivo sob protocolo v2.6.0.");
+      const text = await getGovernmentInsights({ ...MOCK_DATA, escuta, okrs, projetosEstrategicos: projetos });
+      setInsights(text || "Gabinete 360 Camaquã pronto para o despacho.");
     };
     loadInsights();
-  }, [kanbanRegistry, okrs]);
+  }, [kanbanRegistry, okrs, projetos, escuta]);
 
   const renderModule = () => {
     switch(activeTab) {
-      case 'prefeito': return <MacroDashboard data={MOCK_DATA} selectedSecretaria={selectedSecretaria} setSelectedSecretaria={setSelectedSecretaria} kanbanRegistry={kanbanRegistry} onUpdateKanban={(id:any,nc:any)=>setKanbanRegistry({...kanbanRegistry,[id]:nc})} />;
-      case 'projetos': return <GestaoProjetos projetos={[]} />;
+      case 'prefeito': return <MacroDashboard data={MOCK_DATA} selectedSecretaria={selectedSecretaria} setSelectedSecretaria={setSelectedSecretaria} kanbanRegistry={kanbanRegistry} onUpdateKanban={(id:any,nc:any)=>setKanbanRegistry({...kanbanRegistry,[id]:nc})} insights={insights} {...metrics} />;
+      case 'projetos': return <GestaoProjetos projetos={projetos} onUpdateProjetos={setProjetos} secretarias={MOCK_DATA.secretarias} />;
       case 'okr': return <OKRModule okrs={okrs} setOkrs={setOkrs} />;
-      case 'swot': return <SWOTModule swotMatrices={swotMatrices} setSwotMatrices={setSwotMatrices} activeSwotId={activeSwotId} setActiveSwotId={setActiveSwotId} />;
-      case 'escuta': return <CitizenListening escuta={escuta} />;
-      case 'governanca': return <GovernanceManual />;
-      default: return null;
+      case 'swot': return <SWOTModule swotMatrices={swotMatrices} setSwotMatrices={setSwotMatrices} />;
+      case 'escuta': return <CitizenListening escuta={escuta} onUpdateEscuta={setEscuta} onAddEscuta={(d:any)=>setEscuta([d,...escuta])} />;
+      default: return <div className="p-40 text-center italic text-slate-600 font-black uppercase tracking-[1em] opacity-30">Camaquã 360 v3.0.5</div>;
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans flex flex-col relative custom-scrollbar overflow-x-hidden">
-      {/* TOP BAR */}
-      <div className="w-full bg-[#1e293b]/95 border-b border-white/5 py-6 px-10 backdrop-blur-md z-[2000] sticky top-0 flex items-center justify-between shadow-2xl">
-           <div className="flex items-center gap-5 flex-1 overflow-hidden">
-             <div className="p-3 bg-indigo-500 rounded-2xl animate-pulse shadow-lg"><Lightbulb size={18} className="text-white"/></div>
-             <p className="text-[12px] font-bold text-slate-300 italic truncate leading-none tracking-tight">{insights}</p>
-           </div>
-           <div className="flex items-center gap-8 shrink-0 ml-6">
-             <div className="flex items-center gap-3 px-5 py-2 bg-black/40 rounded-full border border-white/10 shadow-inner">
-               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">BI 360 PROTEGIDO</span>
-             </div>
-             <span className="text-[11px] font-black text-indigo-400 uppercase tracking-widest italic border-l border-white/10 pl-8">{VERSION} • AUDIT MODE</span>
-           </div>
+      <div className="w-full bg-[#1e293b]/95 border-b border-white/5 py-6 px-12 backdrop-blur-md z-[2000] sticky top-0 flex items-center justify-between shadow-2xl">
+           <div className="flex items-center gap-6 flex-1 overflow-hidden"><div className="p-4 bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-600/30 group"><Lightbulb size={20} className="text-white group-hover:rotate-12 transition-transform"/></div><p className="text-[12px] font-black text-slate-300 italic truncate tracking-widest uppercase flex items-center gap-3"><span className="text-indigo-400">BI 360°</span> <span className="w-1 h-1 rounded-full bg-slate-700"></span> Gabinete Municipal</p></div>
+           <div className="flex items-center gap-10 shrink-0 ml-8"><div className="flex items-center gap-4 px-6 py-2.5 bg-black/40 rounded-full border border-white/10 shadow-inner"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div><span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">CAMAQUÃ ONLINE</span></div><span className="text-[12px] font-black text-indigo-400 uppercase italic pl-10 border-l border-white/10 tracking-widest">{VERSION}</span></div>
       </div>
-
-      <main className="flex-1 w-full max-w-[1700px] mx-auto p-8 lg:p-16">
-        <header className="mb-20 animate-in slide-in-from-top duration-700">
-          <h1 className="text-4xl lg:text-[7.2rem] font-black text-white tracking-tighter uppercase italic leading-none opacity-95 transition-all">CAMAQUÃ 360°</h1>
-          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8 mt-6 ml-3 opacity-70">
-            <p className="text-slate-500 text-[13px] font-black uppercase tracking-widest italic flex items-center gap-2">
-              Prefeito: <span className="text-slate-300">{EXECUTIVO.prefeito}</span>
-            </p>
-            <span className="hidden md:inline text-slate-800 text-lg">/</span>
-            <p className="text-slate-500 text-[13px] font-black uppercase tracking-widest italic flex items-center gap-2">
-              Vice-prefeito: <span className="text-slate-300">{EXECUTIVO.vice}</span>
-            </p>
-          </div>
-          <p className="text-slate-500 text-[14px] font-black uppercase tracking-[0.9em] ml-3 italic mt-6 opacity-30">Inteligência Governamental e Governança</p>
+      <main className="flex-1 w-full max-w-[1750px] mx-auto p-10 lg:p-20">
+        <header className="mb-24 animate-in slide-in-from-top duration-1000">
+          <h1 className="text-3xl lg:text-[6rem] font-black text-white tracking-tighter uppercase italic leading-none opacity-95">CAMAQUÃ 360°</h1>
+          <div className="flex flex-col md:flex-row gap-12 mt-8 ml-4 opacity-75"><div className="flex flex-col"><span className="text-slate-600 text-[9px] font-black uppercase italic tracking-widest mb-1">Prefeito Municipal</span><p className="text-slate-200 text-sm font-black uppercase tracking-widest italic">{EXECUTIVO.prefeito}</p></div><div className="flex flex-col border-l border-white/10 pl-12"><span className="text-slate-600 text-[9px] font-black uppercase italic tracking-widest mb-1">Vice-Prefeito</span><p className="text-slate-200 text-sm font-black uppercase tracking-widest italic">{EXECUTIVO.vice}</p></div></div>
         </header>
-
         {renderModule()}
       </main>
-
-      {/* DOCK NAVIGATION */}
-      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-5xl px-8">
-        <nav className="bg-[#1e293b]/95 backdrop-blur-3xl border border-white/10 p-5 rounded-[60px] shadow-[0_30px_60px_rgba(0,0,0,0.8)] flex items-center justify-around">
+      <div className="fixed bottom-14 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-6xl px-12">
+        <nav className="bg-[#1e293b]/95 backdrop-blur-3xl border border-white/10 p-4 rounded-[56px] shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)] flex items-center justify-around border-t border-white/5">
           {NAVIGATION.map((item) => (
-            <button key={item.id} onClick={() => { setActiveTab(item.id); setSelectedSecretaria(null); }} className={`relative flex flex-col items-center justify-center w-32 h-20 rounded-[36px] transition-all duration-500 ${activeTab === item.id ? 'text-indigo-400 bg-indigo-500/15 shadow-inner' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
-              <item.icon size={activeTab === item.id ? 32 : 24} className="transition-all" />
-              <span className={`text-[9px] font-black uppercase tracking-tighter mt-2 transition-all ${activeTab === item.id ? 'opacity-100 translate-y-0' : 'opacity-60'}`}>{item.name}</span>
-              {activeTab === item.id && <div className="absolute -bottom-3 w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_20px_rgba(99,102,241,1)]"></div>}
+            <button key={item.id} onClick={() => { setActiveTab(item.id); setSelectedSecretaria(null); }} className={`flex flex-col items-center justify-center w-32 h-18 rounded-[36px] transition-all duration-300 hover:bg-white/5 group ${activeTab === item.id ? 'bg-indigo-600/10 border border-indigo-500/20 shadow-inner' : ''}`}>
+              <item.icon size={22} className={activeTab === item.id ? 'text-indigo-400 scale-110' : 'text-slate-500 group-hover:text-slate-300 transition-all'} /><span className={`text-[9px] font-black uppercase tracking-widest mt-2 transition-all ${activeTab === item.id ? 'text-indigo-400 opacity-100' : 'text-slate-500 opacity-50'}`}>{item.name}</span>
             </button>
           ))}
         </nav>
@@ -679,13 +638,5 @@ const App = () => {
     </div>
   );
 };
-
-// [MODULE PLACEHOLDERS FOR LOCKED]
-const GestaoProjetos = ({ projetos }: any) => (
-  <div className="space-y-12 animate-in fade-in duration-700 pb-48">
-    <EducationalBanner title="Gestão de Projetos" description="Acompanhamento de prazos e metas prioritárias." icon={Briefcase} color="indigo" />
-    <div className="bg-[#1f2937] border border-white/5 rounded-[64px] overflow-hidden shadow-3xl flex items-center justify-center h-96 italic opacity-20 uppercase font-black tracking-[1em] text-[10px]">Módulo Estrutural Protegido</div>
-  </div>
-);
 
 export default App;

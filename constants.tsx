@@ -36,7 +36,15 @@ export const MOCK_DATA: DashboardData = {
     ameacas: []
   },
   kpis: [],
-  projetosEstrategicos: [],
+  projetosEstrategicos: [
+    // Fixed: Added missing 'responsavel' property to satisfy the ProjetoEstrategico type requirement
+    { id: 'P1', nome: 'Pavimentação de Acesso ao Distrito Industrial', eixo: 'Infraestrutura', responsavel: 'Alex Petroman', progresso: 65, status: 'Execução', fim: '2025-10-12', prioridade: 'Alta' },
+    { id: 'P2', nome: 'Novo Posto de Saúde - Bairro Getúlio Vargas', eixo: 'Saúde', responsavel: 'Daniel Mariano', progresso: 30, status: 'Execução', fim: '2025-12-20', prioridade: 'Crítica' },
+    { id: 'P3', nome: 'Digitalização de Processos Administrativos (Papel Zero)', eixo: 'Administração', responsavel: 'Aline Flores', progresso: 90, status: 'Tramitação', fim: '2025-06-30', prioridade: 'Média' },
+    { id: 'P4', nome: 'Revitalização da Praça Zeca Netto', eixo: 'Cultura/Lazer', responsavel: 'Eva Rosi', progresso: 100, status: 'Concluído', fim: '2024-12-01', prioridade: 'Alta' },
+    { id: 'P5', nome: 'Programa de Microcrédito Municipal', eixo: 'Desenvolvimento', responsavel: 'Clayton Dworzecki', progresso: 15, status: 'Risco', fim: '2025-08-15', prioridade: 'Alta' },
+    { id: 'P6', nome: 'Ampliação da Iluminação de LED (Zona Rural)', eixo: 'Segurança', responsavel: 'Marcelo Ferreira', progresso: 45, status: 'Execução', fim: '2025-11-05', prioridade: 'Alta' }
+  ],
   kanbanCards: [],
   entregas: [],
   prioridadesSemanais: [],

@@ -1,12 +1,10 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { DashboardData } from "../types";
+import { DashboardData, EscutaCidada } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getGovernmentInsights = async (data: DashboardData) => {
-  // Use config.systemInstruction for better context steering.
-  // Fixed the error: changed data.indicadores to data.kpis which exists in DashboardData type.
   const prompt = `
     Analise os seguintes dados atuais da Prefeitura de Camaquã:
     - Entregas: ${JSON.stringify(data.entregas)}
@@ -29,10 +27,34 @@ export const getGovernmentInsights = async (data: DashboardData) => {
         topP: 0.8,
       }
     });
-    // response.text is a property, not a method.
     return response.text;
   } catch (error) {
     console.error("Erro ao gerar insights:", error);
     return "Não foi possível gerar insights automáticos no momento.";
+  }
+};
+
+export const getTerritoryIntervention = async (demandas: EscutaCidada[]) => {
+  const resumo = demandas.map(d => `${d.tema} em ${d.bairro} (${d.status})`).join("; ");
+  const prompt = `
+    Como consultor de Smart Cities, analise estas demandas reais do território de Camaquã:
+    ${resumo}
+
+    Com base no volume e status, sugira UMA intervenção assertiva (ex: mutirão de iluminação, força-tarefa de limpeza ou remanejamento de equipe) e justifique brevemente. 
+    Seja curto e prático.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        systemInstruction: "Você é um especialista em logística urbana e gestão territorial municipal.",
+        temperature: 0.2,
+      }
+    });
+    return response.text;
+  } catch (error) {
+    return "Analise os dados para gerar uma sugestão de intervenção.";
   }
 };

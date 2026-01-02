@@ -582,37 +582,132 @@ const SecretariaKanban = ({ secretaria, onBack, cards, onUpdateCards }: any) => 
   );
 };
 
-// --- MÓDULO: PROJETOS (PRESERVADO) ---
+// --- MÓDULO: PROJETOS (ATUALIZADO PARA PROJETOS REAIS) ---
 const GestaoProjetos = ({ projetos, onUpdateProjetos, secretarias }: any) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newProject, setNewProject] = useState<any>({
     nome: '', responsavel: '', eixo: secretarias[0].nome, status: 'Execução',
     recursoPrevisto: '', fim: new Date().toISOString().split('T')[0],
-    prioridade: 'Média', subItens: [{ id: '1', texto: '', concluido: false }]
+    prioridade: 'Média', subItens: []
   });
 
   const handleAddProject = () => {
-    if (!newProject.nome.trim()) return;
-    const total = newProject.subItens.filter((si: any) => si.texto.trim() !== '').length;
-    const comp = newProject.subItens.filter((si: any) => si.texto.trim() !== '' && si.concluido).length;
-    const projectData = { ...newProject, id: editingId || `P-${Date.now()}`, progresso: total > 0 ? Math.round((comp / total) * 100) : 0, updatedAt: new Date().toISOString() };
+    if (!newProject.nome.trim()) {
+      alert("Defina o nome do projeto estratégico.");
+      return;
+    }
+    const projectData = { 
+      ...newProject, 
+      id: editingId || `P-${Date.now()}`, 
+      progresso: newProject.progresso || 0,
+      updatedAt: new Date().toISOString(),
+      arquivado: false
+    };
     if (editingId) onUpdateProjetos(projetos.map((p: any) => p.id === editingId ? projectData : p));
     else onUpdateProjetos([projectData, ...projetos]);
-    setIsAdding(false); setEditingId(null);
+    setIsAdding(false); 
+    setEditingId(null);
+    setNewProject({
+      nome: '', responsavel: '', eixo: secretarias[0].nome, status: 'Execução',
+      recursoPrevisto: '', fim: new Date().toISOString().split('T')[0],
+      prioridade: 'Média', subItens: []
+    });
   };
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-48">
-      <EducationalBanner title="Projetos Estratégicos" description="Monitoramento real do Plano de Governo e Obras Públicas." icon={Layers} color="indigo" />
-      <div className="flex justify-end"><button onClick={() => { setEditingId(null); setIsAdding(true); }} className="px-12 py-8 bg-indigo-600 text-white rounded-[40px] font-black uppercase text-[12px] shadow-3xl hover:bg-indigo-500 shrink-0"><Plus size={24}/> Novo Projeto</button></div>
+      <EducationalBanner title="Projetos Estratégicos" description="Gestão oficial do Plano de Governo. Registre obras, programas e intervenções estruturantes." icon={Layers} color="indigo" />
+      <div className="flex justify-end">
+        <button onClick={() => { setEditingId(null); setIsAdding(true); }} className="px-12 py-8 bg-indigo-600 text-white rounded-[40px] font-black uppercase text-[12px] shadow-3xl hover:bg-indigo-500 shrink-0 flex items-center gap-4 border border-white/10 active:scale-95 transition-all">
+          <Plus size={24}/> Registrar Novo Projeto Real
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {projetos.filter((p:any) => !p.arquivado).map((p: any) => (
+        {projetos.length === 0 ? (
+          <div className="col-span-full py-40 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-[64px] bg-white/2 opacity-40">
+            <Layers size={64} className="text-slate-600 mb-6"/>
+            <p className="text-xl font-black uppercase italic text-slate-600 tracking-widest">Nenhum projeto estratégico cadastrado</p>
+            <p className="text-[10px] font-bold text-slate-700 uppercase mt-4 italic">Clique no botão acima para iniciar a entrada de dados reais</p>
+          </div>
+        ) : projetos.filter((p:any) => !p.arquivado).map((p: any) => (
           <div key={p.id} className="bg-[#1f2937] border border-white/5 p-10 rounded-[56px] shadow-3xl hover:border-indigo-500/30 transition-all flex flex-col justify-between h-[520px]">
-            <div><div className="flex justify-between items-start mb-6"><button onClick={() => { setNewProject(p); setEditingId(p.id); setIsAdding(true); }} className="p-3 bg-white/5 rounded-xl text-slate-400 hover:text-white hover:bg-indigo-600 transition-all"><Pencil size={14}/></button><StatusBadge status={p.status} /></div><p className="text-[9px] font-black text-indigo-500 uppercase mb-2 italic tracking-widest">{p.eixo}</p><h4 className="text-xl font-black text-white italic mb-4 leading-tight">{p.nome}</h4><div className="bg-black/20 p-4 rounded-2xl mb-6 border border-white/5"><p className="text-[7px] font-black text-slate-600 uppercase mb-1 italic">Responsável Técnico</p><p className="text-[10px] font-black text-slate-300 italic">{p.responsavel}</p></div><div className="space-y-4 mb-8"><div className="flex justify-between text-[10px] font-black text-slate-500 uppercase italic"><span>Progresso Realizado</span><span>{p.progresso}%</span></div><div className="w-full bg-black/40 h-3 rounded-full overflow-hidden border border-white/5"><div className="h-full bg-indigo-600 transition-all duration-1000" style={{ width: `${p.progresso}%` }}></div></div></div></div><div className="flex justify-between items-center pt-6 border-t border-white/5"><div className="flex items-center gap-2"><Calendar size={14} className="text-slate-600"/><span className="text-[9px] font-black text-slate-500 uppercase italic">Entrega: {new Date(p.fim).toLocaleDateString()}</span></div></div>
+            <div>
+              <div className="flex justify-between items-start mb-6">
+                <button onClick={() => { setNewProject(p); setEditingId(p.id); setIsAdding(true); }} className="p-3 bg-white/5 rounded-xl text-slate-400 hover:text-white hover:bg-indigo-600 transition-all"><Pencil size={14}/></button>
+                <StatusBadge status={p.status} />
+              </div>
+              <p className="text-[9px] font-black text-indigo-500 uppercase mb-2 italic tracking-widest">{p.eixo}</p>
+              <h4 className="text-xl font-black text-white italic mb-4 leading-tight">{p.nome}</h4>
+              <div className="bg-black/20 p-4 rounded-2xl mb-6 border border-white/5">
+                <p className="text-[7px] font-black text-slate-600 uppercase mb-1 italic">Responsável Técnico</p>
+                <p className="text-[10px] font-black text-slate-300 italic">{p.responsavel || "Não definido"}</p>
+              </div>
+              <div className="space-y-4 mb-8">
+                <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase italic">
+                  <span>Progresso Realizado</span>
+                  <span>{p.progresso}%</span>
+                </div>
+                <div className="w-full bg-black/40 h-3 rounded-full overflow-hidden border border-white/5">
+                  <div className="h-full bg-indigo-600 transition-all duration-1000" style={{ width: `${p.progresso}%` }}></div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-center pt-6 border-t border-white/5">
+              <div className="flex items-center gap-2">
+                <Calendar size={14} className="text-slate-600"/>
+                <span className="text-[9px] font-black text-slate-500 uppercase italic">Entrega: {new Date(p.fim).toLocaleDateString()}</span>
+              </div>
+              <button onClick={() => onUpdateProjetos(projetos.filter((pj:any)=>pj.id !== p.id))} className="p-3 text-rose-500/30 hover:text-rose-500 transition-all"><Trash2 size={16}/></button>
+            </div>
           </div>
         ))}
       </div>
+      {isAdding && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in zoom-in-95 duration-300">
+           <div className="bg-[#1f2937] border border-white/10 w-full max-w-2xl rounded-[64px] p-12 shadow-3xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <h4 className="text-3xl font-black text-white italic uppercase mb-10 text-center tracking-tighter">Entrada de Projeto Real</h4>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Nome do Projeto Estratégico</label>
+                  <input value={newProject.nome} onChange={e=>setNewProject({...newProject, nome: e.target.value})} placeholder="Ex: Pavimentação da Av. Olavo Moraes..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Responsável</label>
+                      <input value={newProject.responsavel} onChange={e=>setNewProject({...newProject, responsavel: e.target.value})} placeholder="Nome do Secretário ou Diretor..." className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Secretaria / Eixo</label>
+                      <select value={newProject.eixo} onChange={e=>setNewProject({...newProject, eixo: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner appearance-none">
+                         {secretarias.map((s:any) => <option key={s.id} value={s.nome}>{s.nome}</option>)}
+                      </select>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Status Inicial</label>
+                      <select value={newProject.status} onChange={e=>setNewProject({...newProject, status: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner appearance-none">
+                         {['Backlog', 'Planejado', 'Execução', 'Tramitação', 'Risco', 'Concluído'].map(st => <option key={st} value={st}>{st}</option>)}
+                      </select>
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Data Estimada de Entrega</label>
+                      <input type="date" value={newProject.fim} onChange={e=>setNewProject({...newProject, fim: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                   </div>
+                </div>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-500 uppercase italic px-4">Progresso Atual (%)</label>
+                   <input type="number" min="0" max="100" value={newProject.progresso || 0} onChange={e=>setNewProject({...newProject, progresso: parseInt(e.target.value)})} className="w-full bg-black/30 border border-white/10 rounded-3xl px-8 py-5 text-white font-bold italic outline-none focus:border-indigo-500 shadow-inner" />
+                </div>
+                <div className="flex gap-6 pt-10">
+                   <button onClick={()=>setIsAdding(false)} className="flex-1 py-7 bg-white/5 rounded-[40px] font-black uppercase text-slate-500 italic tracking-widest hover:bg-rose-500/10 hover:text-rose-500 transition-all">Descartar</button>
+                   <button onClick={handleAddProject} className="flex-[2] py-7 bg-indigo-600 text-white rounded-[40px] font-black uppercase italic shadow-2xl tracking-widest border border-white/10 hover:bg-indigo-500 transition-all">Salvar Projeto Estratégico</button>
+                </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
